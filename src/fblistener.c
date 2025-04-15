@@ -1,41 +1,42 @@
-/*@internal
+/*
+ *  Copyright 2006-2024 Carnegie Mellon University
+ *  See license information in LICENSE.txt.
+ */
+/**
+ *  @file fblistener.c
+ *  IPFIX Collecting Process connection listener implementation
+ */
+/*
+ *  ------------------------------------------------------------------------
+ *  Authors: Brian Trammell
+ *  ------------------------------------------------------------------------
+ *  @DISTRIBUTION_STATEMENT_BEGIN@
+ *  libfixbuf 2.5
  *
- * fblistener.c
- * IPFIX Collecting Process connection listener implementation
+ *  Copyright 2024 Carnegie Mellon University.
  *
- * ------------------------------------------------------------------------
- * Copyright (C) 2006-2018 Carnegie Mellon University. All Rights Reserved.
- * ------------------------------------------------------------------------
- * Authors: Brian Trammell
- * ------------------------------------------------------------------------
- * @OPENSOURCE_LICENSE_START@
- * libfixbuf 2.0
+ *  NO WARRANTY. THIS CARNEGIE MELLON UNIVERSITY AND SOFTWARE ENGINEERING
+ *  INSTITUTE MATERIAL IS FURNISHED ON AN "AS-IS" BASIS. CARNEGIE MELLON
+ *  UNIVERSITY MAKES NO WARRANTIES OF ANY KIND, EITHER EXPRESSED OR
+ *  IMPLIED, AS TO ANY MATTER INCLUDING, BUT NOT LIMITED TO, WARRANTY OF
+ *  FITNESS FOR PURPOSE OR MERCHANTABILITY, EXCLUSIVITY, OR RESULTS
+ *  OBTAINED FROM USE OF THE MATERIAL. CARNEGIE MELLON UNIVERSITY DOES NOT
+ *  MAKE ANY WARRANTY OF ANY KIND WITH RESPECT TO FREEDOM FROM PATENT,
+ *  TRADEMARK, OR COPYRIGHT INFRINGEMENT.
  *
- * Copyright 2018 Carnegie Mellon University. All Rights Reserved.
+ *  Licensed under a GNU-Lesser GPL 3.0-style license, please see
+ *  LICENSE.txt or contact permission@sei.cmu.edu for full terms.
  *
- * NO WARRANTY. THIS CARNEGIE MELLON UNIVERSITY AND SOFTWARE
- * ENGINEERING INSTITUTE MATERIAL IS FURNISHED ON AN "AS-IS"
- * BASIS. CARNEGIE MELLON UNIVERSITY MAKES NO WARRANTIES OF ANY KIND,
- * EITHER EXPRESSED OR IMPLIED, AS TO ANY MATTER INCLUDING, BUT NOT
- * LIMITED TO, WARRANTY OF FITNESS FOR PURPOSE OR MERCHANTABILITY,
- * EXCLUSIVITY, OR RESULTS OBTAINED FROM USE OF THE
- * MATERIAL. CARNEGIE MELLON UNIVERSITY DOES NOT MAKE ANY WARRANTY OF
- * ANY KIND WITH RESPECT TO FREEDOM FROM PATENT, TRADEMARK, OR
- * COPYRIGHT INFRINGEMENT.
+ *  [DISTRIBUTION STATEMENT A] This material has been approved for public
+ *  release and unlimited distribution.  Please see Copyright notice for
+ *  non-US Government use and distribution.
  *
- * Released under a GNU-Lesser GPL 3.0-style license, please see
- * LICENSE.txt or contact permission@sei.cmu.edu for full terms.
+ *  This Software includes and/or makes use of Third-Party Software each
+ *  subject to its own license.
  *
- * [DISTRIBUTION STATEMENT A] This material has been approved for
- * public release and unlimited distribution.  Please see Copyright
- * notice for non-US Government use and distribution.
- *
- * Carnegie Mellon(R) and CERT(R) are registered in the U.S. Patent
- * and Trademark Office by Carnegie Mellon University.
- *
- * DM18-0325
- * @OPENSOURCE_LICENSE_END@
- * ------------------------------------------------------------------------
+ *  DM24-1020
+ *  @DISTRIBUTION_STATEMENT_END@
+ *  ------------------------------------------------------------------------
  */
 
 #define _FIXBUF_SOURCE_
@@ -326,7 +327,7 @@ static gboolean fbListenerInitUDPSocket(
     switch (listener->spec->transport) {
     case FB_UDP:
         collector = fbCollectorAllocSocket(listener, ctx,
-                                           listener->lsock, NULL, 0);
+                                           listener->lsock, NULL, 0, err);
         break;
 #if HAVE_OPENSSL_DTLS
     case FB_DTLS_UDP:
@@ -387,6 +388,7 @@ fbListener_t *fbListenerAlloc(
     fbListener_t                *listener = NULL;
     gboolean                    ownSocket;
 
+    g_assert(session);
     if (spec) {
         ownSocket = FALSE;
     } else {
@@ -531,6 +533,10 @@ void            fbListenerFree(
     fBuf_t                     *lfbuf = NULL;
     fbSession_t                *session = NULL;
     unsigned int               loop = 0;
+
+    if (NULL == listener) {
+        return;
+    }
 
     while (loop < MAX_BUFFER_FREE) {
         tfbuf[loop] = NULL;
@@ -682,7 +688,6 @@ static fBuf_t *fbListenerWaitAccept(
 
     /* Okay, we have a socket. Ask the application for context. */
     if (listener->appinit) {
-
         if (!listener->appinit(listener, &ctx, asock,
                                &(peer.so), peerlen, err)) {
             close(asock);
@@ -697,7 +702,7 @@ static fBuf_t *fbListenerWaitAccept(
 #endif
     case FB_TCP:
         collector = fbCollectorAllocSocket(listener, ctx, asock,
-                                           &(peer.so), peerlen);
+                                           &(peer.so), peerlen, err);
         break;
 #if HAVE_OPENSSL
 #if HAVE_OPENSSL_DTLS_SCTP
@@ -997,6 +1002,7 @@ gboolean            fbListenerGetCollector(
     fbCollector_t       **collector,
     GError              **err)
 {
+    g_assert(collector);
     if (NULL == listener->collectorHandle) {
         g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_CONN,
                     "no collector available to be retrieved");
@@ -1016,12 +1022,8 @@ fbListenerGroup_t* fbListenerGroupAlloc(
     fbListenerGroup_t   *group = NULL;
 
     group = g_slice_new0( fbListenerGroup_t );
-
-    if (!group) {
-        return NULL;
-    }
-
-    group->group_pfd = (struct pollfd*)g_slice_alloc0(MAX_CONNECTIONS* 5 *sizeof(struct pollfd));
+    group->group_pfd = ((struct pollfd *)g_slice_alloc0(
+                            MAX_CONNECTIONS* 5 *sizeof(struct pollfd)));
 
     group->head = NULL;
 
@@ -1038,8 +1040,7 @@ fbListenerGroup_t* fbListenerGroupAlloc(
 void fbListenerGroupFree(
     fbListenerGroup_t *group)
 {
-
-    if (group->group_pfd) {
+    if (group && group->group_pfd) {
         g_slice_free1((MAX_CONNECTIONS * 5 * sizeof(struct pollfd)),
                       group->group_pfd);
     }
@@ -1294,7 +1295,7 @@ fbListenerGroupResult_t* fbListenerGroupWait(
                                 } else {
                                     g_warning("Maximum connections reached "
                                               "for Listener Group (%d)",
-                                              group->pfd_len);
+                                              (int)group->pfd_len);
                                 }
                                 found = TRUE;
                                 group->lastlist = entry;
@@ -1352,14 +1353,17 @@ fBuf_t  *fbListenerOwnSocketCollectorTCP(
     if (sock <= 2) {
         /* invalid socket */
         g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_CONN,
-            "Invalid socket descriptor");
+                    "Invalid socket descriptor");
         return NULL;
     }
 
     connSpec.transport = FB_TCP;
     listener->spec = &connSpec;
 
-    collector = fbCollectorAllocSocket(listener, NULL, sock, NULL, 0);
+    collector = fbCollectorAllocSocket(listener, NULL, sock, NULL, 0, err);
+    if (!collector) {
+        return NULL;
+    }
 
     fbuf = fBufAllocForCollection(fbSessionClone(listener->session),collector);
 
@@ -1392,6 +1396,8 @@ fBuf_t  *fbListenerOwnSocketCollectorTLS(
 
     if (sock <= 2) {
         /* invalid socket */
+        g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_CONN,
+                    "Invalid socket descriptor");
         return NULL;
     }
 
@@ -1431,7 +1437,6 @@ gboolean fbListenerCallAppInit(
     fbUDPConnSpec_t    *spec,
     GError             **err)
 {
-
     if (listener->appinit) {
         if (!listener->appinit(listener, &(spec->ctx), listener->lsock,
                                &(spec->peer.so), spec->peerlen, err)) {
@@ -1447,7 +1452,6 @@ fbSession_t *fbListenerSetPeerSession(
     fbListener_t        *listener,
     fbSession_t         *session)
 {
-
     fbSession_t *new_session = session;
 
     if (!new_session) {

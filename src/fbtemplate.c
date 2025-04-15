@@ -1,43 +1,46 @@
 /*
- ** fbtemplate.c
- ** IPFIX Template implementation
- **
- ** ------------------------------------------------------------------------
- ** Copyright (C) 2006-2018 Carnegie Mellon University. All Rights Reserved.
- ** ------------------------------------------------------------------------
- ** Authors: Brian Trammell
- ** ------------------------------------------------------------------------
- ** @OPENSOURCE_LICENSE_START@
- ** libfixbuf 2.0
- **
- ** Copyright 2018 Carnegie Mellon University. All Rights Reserved.
- **
- ** NO WARRANTY. THIS CARNEGIE MELLON UNIVERSITY AND SOFTWARE
- ** ENGINEERING INSTITUTE MATERIAL IS FURNISHED ON AN "AS-IS"
- ** BASIS. CARNEGIE MELLON UNIVERSITY MAKES NO WARRANTIES OF ANY KIND,
- ** EITHER EXPRESSED OR IMPLIED, AS TO ANY MATTER INCLUDING, BUT NOT
- ** LIMITED TO, WARRANTY OF FITNESS FOR PURPOSE OR MERCHANTABILITY,
- ** EXCLUSIVITY, OR RESULTS OBTAINED FROM USE OF THE
- ** MATERIAL. CARNEGIE MELLON UNIVERSITY DOES NOT MAKE ANY WARRANTY OF
- ** ANY KIND WITH RESPECT TO FREEDOM FROM PATENT, TRADEMARK, OR
- ** COPYRIGHT INFRINGEMENT.
- **
- ** Released under a GNU-Lesser GPL 3.0-style license, please see
- ** LICENSE.txt or contact permission@sei.cmu.edu for full terms.
- **
- ** [DISTRIBUTION STATEMENT A] This material has been approved for
- ** public release and unlimited distribution.  Please see Copyright
- ** notice for non-US Government use and distribution.
- **
- ** Carnegie Mellon(R) and CERT(R) are registered in the U.S. Patent
- ** and Trademark Office by Carnegie Mellon University.
- **
- ** DM18-0325
- ** @OPENSOURCE_LICENSE_END@
- ** ------------------------------------------------------------------------
+ *  Copyright 2006-2024 Carnegie Mellon University
+ *  See license information in LICENSE.txt.
+ */
+/**
+ *  @file fbtemplate.c
+ *  IPFIX Template implementation
+ */
+/*
+ *  ------------------------------------------------------------------------
+ *  Authors: Brian Trammell
+ *  ------------------------------------------------------------------------
+ *  @DISTRIBUTION_STATEMENT_BEGIN@
+ *  libfixbuf 2.5
+ *
+ *  Copyright 2024 Carnegie Mellon University.
+ *
+ *  NO WARRANTY. THIS CARNEGIE MELLON UNIVERSITY AND SOFTWARE ENGINEERING
+ *  INSTITUTE MATERIAL IS FURNISHED ON AN "AS-IS" BASIS. CARNEGIE MELLON
+ *  UNIVERSITY MAKES NO WARRANTIES OF ANY KIND, EITHER EXPRESSED OR
+ *  IMPLIED, AS TO ANY MATTER INCLUDING, BUT NOT LIMITED TO, WARRANTY OF
+ *  FITNESS FOR PURPOSE OR MERCHANTABILITY, EXCLUSIVITY, OR RESULTS
+ *  OBTAINED FROM USE OF THE MATERIAL. CARNEGIE MELLON UNIVERSITY DOES NOT
+ *  MAKE ANY WARRANTY OF ANY KIND WITH RESPECT TO FREEDOM FROM PATENT,
+ *  TRADEMARK, OR COPYRIGHT INFRINGEMENT.
+ *
+ *  Licensed under a GNU-Lesser GPL 3.0-style license, please see
+ *  LICENSE.txt or contact permission@sei.cmu.edu for full terms.
+ *
+ *  [DISTRIBUTION STATEMENT A] This material has been approved for public
+ *  release and unlimited distribution.  Please see Copyright notice for
+ *  non-US Government use and distribution.
+ *
+ *  This Software includes and/or makes use of Third-Party Software each
+ *  subject to its own license.
+ *
+ *  DM24-1020
+ *  @DISTRIBUTION_STATEMENT_END@
+ *  ------------------------------------------------------------------------
  */
 
 #define _FIXBUF_SOURCE_
+#define DEFINE_TEMPLATE_METADATA_SPEC
 #include <fixbuf/private.h>
 
 
@@ -119,13 +122,9 @@ void                fbTemplateFree(
     }
     g_free(tmpl->ie_ary);
 
-    if (tmpl->metadata_rec && tmpl->metadata_rec->template_name.buf)
-    {
+    if (tmpl->metadata_rec) {
         g_free(tmpl->metadata_rec->template_name.buf);
-    }
-
-    if (tmpl->metadata_rec)
-    {
+        g_free(tmpl->metadata_rec->template_description.buf);
         g_slice_free(fbTemplateOptRec_t, tmpl->metadata_rec);
     }
     /* destroy offset cache if present */
@@ -167,15 +166,15 @@ static void     fbTemplateExtendIndices(
     if (tmpl_ie->len == FB_IE_VARLEN) {
         tmpl->is_varlen = TRUE;
         tmpl->ie_len += 1;
-        if (tmpl_ie->num == FB_IE_BASIC_LIST) {
-                tmpl->ie_internal_len += sizeof(fbBasicList_t);
-            } else if (tmpl_ie->num == FB_IE_SUBTEMPLATE_LIST) {
-                tmpl->ie_internal_len += sizeof(fbSubTemplateList_t);
-            } else if (tmpl_ie->num == FB_IE_SUBTEMPLATE_MULTILIST) {
-                tmpl->ie_internal_len += sizeof(fbSubTemplateMultiList_t);
-            } else {
-                tmpl->ie_internal_len += sizeof(fbVarfield_t);
-            }
+        if (tmpl_ie->type == FB_BASIC_LIST) {
+            tmpl->ie_internal_len += sizeof(fbBasicList_t);
+        } else if (tmpl_ie->type == FB_SUB_TMPL_LIST) {
+            tmpl->ie_internal_len += sizeof(fbSubTemplateList_t);
+        } else if (tmpl_ie->type == FB_SUB_TMPL_MULTI_LIST) {
+            tmpl->ie_internal_len += sizeof(fbSubTemplateMultiList_t);
+        } else {
+            tmpl->ie_internal_len += sizeof(fbVarfield_t);
+        }
     } else {
         tmpl->ie_len += tmpl_ie->len;
         tmpl->ie_internal_len += tmpl_ie->len;
@@ -193,14 +192,13 @@ gboolean            fbTemplateAppend(
 {
     fbInfoElement_t     *tmpl_ie;
 
+    g_assert(ex_ie);
+
     /* grow information element array */
     tmpl_ie = fbTemplateExtendElements(tmpl);
 
     /* copy information element out of the info model */
-    if (!fbInfoElementCopyToTemplate(tmpl->model, ex_ie, tmpl_ie)) {
-        g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_NOELEMENT,
-                    "No such information element %08x:%04x",
-                    ex_ie->ent, ex_ie->num);
+    if (!fbInfoElementCopyToTemplate(tmpl->model, ex_ie, tmpl_ie, err)) {
         return FALSE;
     }
 
@@ -229,9 +227,8 @@ gboolean            fbTemplateAppendSpec(
     /* copy information element out of the info model */
 
     if (!fbInfoElementCopyToTemplateByName(tmpl->model, spec->name,
-                                           spec->len_override, tmpl_ie)) {
-        g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_NOELEMENT,
-                    "No such information element %s", spec->name);
+                                           spec->len_override, tmpl_ie, err))
+    {
         return FALSE;
     }
     if (spec->len_override == 0 && tmpl_ie->len != FB_IE_VARLEN) {
@@ -368,3 +365,52 @@ fbInfoModel_t      *fbTemplateGetInfoModel(
 {
     return tmpl->model;
 }
+
+fbTemplate_t        *fbTemplateAllocTemplateMetadataTmpl(
+    fbInfoModel_t      *model,
+    gboolean            internal,
+    GError            **err)
+{
+    fbTemplate_t *tmpl;
+    uint32_t flags;
+
+    /* do not include padding when external */
+    flags = internal ? ~0 : 0;
+
+    tmpl = fbTemplateAlloc(model);
+    if (!fbTemplateAppendSpecArray(tmpl, template_metadata_spec, flags, err)) {
+        fbTemplateFreeUnused(tmpl);
+        return NULL;
+    }
+    fbTemplateSetOptionsScope(tmpl, 1);
+    return tmpl;
+}
+
+void                fbTemplateAddMetadataRecord(
+    fbTemplate_t        *tmpl,
+    uint16_t             tid,
+    const char          *name,
+    const char          *description)
+{
+    fbTemplateOptRec_t *metadata_rec;
+
+    metadata_rec = g_slice_new0(fbTemplateOptRec_t);
+    metadata_rec->template_id = tid;
+    metadata_rec->template_name.buf = (uint8_t *) g_strdup(name);
+    metadata_rec->template_name.len = strlen(name);
+
+    if (description) {
+        metadata_rec->template_description.buf =
+            (uint8_t *) g_strdup(description);
+        metadata_rec->template_description.len = strlen(description);
+    }
+
+    if (tmpl->metadata_rec) {
+        g_free(tmpl->metadata_rec->template_name.buf);
+        g_free(tmpl->metadata_rec->template_description.buf);
+        g_slice_free(fbTemplateOptRec_t, tmpl->metadata_rec);
+    }
+
+    tmpl->metadata_rec = metadata_rec;
+}
+

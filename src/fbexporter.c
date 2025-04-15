@@ -1,49 +1,54 @@
+/*
+ *  Copyright 2006-2024 Carnegie Mellon University
+ *  See license information in LICENSE.txt.
+ */
 /**
- * @internal
+ *  @file fbexporter.c
+ *  IPFIX Exporting Process single transport session implementation
+ */
+/*
+ *  ------------------------------------------------------------------------
+ *  Authors: Brian Trammell
+ *  ------------------------------------------------------------------------
+ *  @DISTRIBUTION_STATEMENT_BEGIN@
+ *  libfixbuf 2.5
  *
- * @file fbexporter.c
+ *  Copyright 2024 Carnegie Mellon University.
  *
- * IPFIX Exporting Process single transport session implementation
+ *  NO WARRANTY. THIS CARNEGIE MELLON UNIVERSITY AND SOFTWARE ENGINEERING
+ *  INSTITUTE MATERIAL IS FURNISHED ON AN "AS-IS" BASIS. CARNEGIE MELLON
+ *  UNIVERSITY MAKES NO WARRANTIES OF ANY KIND, EITHER EXPRESSED OR
+ *  IMPLIED, AS TO ANY MATTER INCLUDING, BUT NOT LIMITED TO, WARRANTY OF
+ *  FITNESS FOR PURPOSE OR MERCHANTABILITY, EXCLUSIVITY, OR RESULTS
+ *  OBTAINED FROM USE OF THE MATERIAL. CARNEGIE MELLON UNIVERSITY DOES NOT
+ *  MAKE ANY WARRANTY OF ANY KIND WITH RESPECT TO FREEDOM FROM PATENT,
+ *  TRADEMARK, OR COPYRIGHT INFRINGEMENT.
  *
- ** ------------------------------------------------------------------------
- ** Copyright (C) 2006-2018 Carnegie Mellon University. All Rights Reserved.
- ** ------------------------------------------------------------------------
- ** Authors: Brian Trammell
- ** ------------------------------------------------------------------------
- ** @OPENSOURCE_LICENSE_START@
- ** libfixbuf 2.0
- **
- ** Copyright 2018 Carnegie Mellon University. All Rights Reserved.
- **
- ** NO WARRANTY. THIS CARNEGIE MELLON UNIVERSITY AND SOFTWARE
- ** ENGINEERING INSTITUTE MATERIAL IS FURNISHED ON AN "AS-IS"
- ** BASIS. CARNEGIE MELLON UNIVERSITY MAKES NO WARRANTIES OF ANY KIND,
- ** EITHER EXPRESSED OR IMPLIED, AS TO ANY MATTER INCLUDING, BUT NOT
- ** LIMITED TO, WARRANTY OF FITNESS FOR PURPOSE OR MERCHANTABILITY,
- ** EXCLUSIVITY, OR RESULTS OBTAINED FROM USE OF THE
- ** MATERIAL. CARNEGIE MELLON UNIVERSITY DOES NOT MAKE ANY WARRANTY OF
- ** ANY KIND WITH RESPECT TO FREEDOM FROM PATENT, TRADEMARK, OR
- ** COPYRIGHT INFRINGEMENT.
- **
- ** Released under a GNU-Lesser GPL 3.0-style license, please see
- ** LICENSE.txt or contact permission@sei.cmu.edu for full terms.
- **
- ** [DISTRIBUTION STATEMENT A] This material has been approved for
- ** public release and unlimited distribution.  Please see Copyright
- ** notice for non-US Government use and distribution.
- **
- ** Carnegie Mellon(R) and CERT(R) are registered in the U.S. Patent
- ** and Trademark Office by Carnegie Mellon University.
- **
- ** DM18-0325
- ** @OPENSOURCE_LICENSE_END@
- ** ------------------------------------------------------------------------
+ *  Licensed under a GNU-Lesser GPL 3.0-style license, please see
+ *  LICENSE.txt or contact permission@sei.cmu.edu for full terms.
  *
+ *  [DISTRIBUTION STATEMENT A] This material has been approved for public
+ *  release and unlimited distribution.  Please see Copyright notice for
+ *  non-US Government use and distribution.
+ *
+ *  This Software includes and/or makes use of Third-Party Software each
+ *  subject to its own license.
+ *
+ *  DM24-1020
+ *  @DISTRIBUTION_STATEMENT_END@
+ *  ------------------------------------------------------------------------
+ */
+
+/**
+ * Copyright 2023 Hewlett Packard Enterprise Development LP.
+ *
+ * Hewlett Packard Enterprise modified this file to add support for a
+ * specified source interface for exported IPFIX flows.
  */
 
 #define _FIXBUF_SOURCE_
-/*#define _GNU_SOURCE*/
 #include <fixbuf/private.h>
+#include <arpa/inet.h>
 
 
 /**
@@ -59,11 +64,15 @@
  */
 #define FB_F_SCTP_PR_TTL            0x40000000
 
+/* For Halon ipfixd daemon, schema defines this as the max length */
+#define V4_MAX_SOURCE_ENTRY_LENGTH 15
+#define V6_MAX_SOURCE_ENTRY_LENGTH 45
+
 typedef gboolean    (*fbExporterOpen_fn)(
     fbExporter_t                *exporter,
     GError                      **err);
 
-typedef gboolean    (*fbExporterWrite_fn) (
+typedef gboolean    (*fbExporterWrite_fn)(
     fbExporter_t                *exporter,
     uint8_t                     *msgbase,
     size_t                      msglen,
@@ -109,6 +118,8 @@ struct fbExporter_st {
     fbExporterWrite_fn          exwrite;
     fbExporterClose_fn          exclose;
     uint16_t                    mtu;
+    char                        source_ip[V4_MAX_SOURCE_ENTRY_LENGTH + 1];
+    char                        source_ip6[V6_MAX_SOURCE_ENTRY_LENGTH + 1];
 };
 
 /**
@@ -120,7 +131,7 @@ struct fbExporter_st {
  *
  * @return
  */
-static gboolean fbExporterOpenFile (
+static gboolean fbExporterOpenFile(
     fbExporter_t                *exporter,
     GError                      **err)
 {
@@ -194,7 +205,7 @@ static gboolean fbExporterWriteFile(
  * @param exporter
  *
  */
-static void fbExporterCloseFile (
+static void fbExporterCloseFile(
     fbExporter_t                *exporter)
 {
     if (exporter->stream.fp == stdout) {
@@ -258,7 +269,7 @@ static gboolean fbExporterOpenBuffer(
  * @param exporter
  *
  */
-static void fbExporterCloseBuffer (
+static void fbExporterCloseBuffer(
     fbExporter_t              *exporter)
 {
     exporter->active = FALSE;
@@ -336,7 +347,8 @@ fbExporter_t    *fbExporterAllocFP(
  *
  *
  */
-static void fbExporterIgnoreSigpipe()
+static void fbExporterIgnoreSigpipe(
+    void)
 {
     static gboolean ignored = FALSE;
     struct sigaction sa, osa;
@@ -398,6 +410,10 @@ static gboolean fbExporterOpenSocket(
 {
     struct addrinfo             *ai = NULL;
     int                         sockbuf_sz = FB_SOCKBUF_DEFAULT;
+    struct in_addr              addr;
+    struct in6_addr             addrv6;
+    struct sockaddr_in          source_ip_addr;
+    struct sockaddr_in6         source_ip_addr6;
 
     /* Turn the exporter connection specifier into an addrinfo */
     if (!fbConnSpecLookupAI(exporter->spec.conn, FALSE, err)) return FALSE;
@@ -428,6 +444,33 @@ static gboolean fbExporterOpenSocket(
 
         exporter->stream.fd = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
         if (exporter->stream.fd < 0) continue;
+
+        if ((exporter->source_ip[0] != '\0') && (ai->ai_family == AF_INET)) {
+            if (inet_pton(AF_INET, exporter->source_ip, &addr) == 1) {
+                memset(&source_ip_addr, 0, sizeof(source_ip_addr));
+                source_ip_addr.sin_family = AF_INET;
+                source_ip_addr.sin_addr.s_addr = inet_addr(exporter->source_ip);
+                /* bind socket to IPv4 source address */
+                if (bind(exporter->stream.fd, (struct sockaddr *) &source_ip_addr, sizeof(source_ip_addr)) == -1) {
+                    g_warning("Bind failed for exporter source IPv4: %s", exporter->source_ip);
+                    close(exporter->stream.fd);
+                    continue;
+                }
+            }
+        } else if ((exporter->source_ip6[0] != '\0') && (ai->ai_family == AF_INET6)) {
+            if (inet_pton(AF_INET6, exporter->source_ip6, &addrv6) == 1) {
+                memset(&source_ip_addr6, 0, sizeof(source_ip_addr6));
+                source_ip_addr6.sin6_family = AF_INET6;
+                inet_pton(AF_INET6, exporter->source_ip6, (void *)&source_ip_addr6.sin6_addr.s6_addr);
+                /* bind socket to IPv6 source address */
+                if (bind(exporter->stream.fd, (struct sockaddr *) &source_ip_addr6,  sizeof(source_ip_addr6)) == -1) {
+                    g_warning("Bind failed for exporter source IPv6: %s", exporter->source_ip6);
+                    close(exporter->stream.fd);
+                    continue;
+                }
+            }
+        }
+
         if (connect(exporter->stream.fd, ai->ai_addr, ai->ai_addrlen) == 0) break;
         close(exporter->stream.fd);
     } while ((ai = ai->ai_next));
@@ -473,7 +516,7 @@ static gboolean fbExporterOpenSocket(
  *
  * @return
  */
-static gboolean fbExporterWriteSCTP (
+static gboolean fbExporterWriteSCTP(
     fbExporter_t                *exporter,
     uint8_t                     *msgbase,
     size_t                      msglen,
@@ -549,7 +592,7 @@ static gboolean fbExporterWriteSCTP (
  *
  * @return
  */
-static gboolean fbExporterWriteTCP (
+static gboolean fbExporterWriteTCP(
     fbExporter_t                *exporter,
     uint8_t                     *msgbase,
     size_t                      msglen,
@@ -588,7 +631,7 @@ static gboolean fbExporterWriteTCP (
  *
  * @return
  */
-static gboolean fbExporterWriteUDP (
+static gboolean fbExporterWriteUDP(
     fbExporter_t                *exporter,
     uint8_t                     *msgbase,
     size_t                      msglen,
@@ -628,7 +671,7 @@ static gboolean fbExporterWriteUDP (
  * @param exporter
  *
  */
-static void fbExporterCloseSocket (
+static void fbExporterCloseSocket(
     fbExporter_t                *exporter)
 {
     close(exporter->stream.fd);
@@ -646,11 +689,12 @@ static void fbExporterCloseSocket (
  *
  * @return
  */
-static gboolean fbExporterOpenTLS (
+static gboolean fbExporterOpenTLS(
     fbExporter_t                *exporter,
     GError                      **err)
 {
     BIO                         *conn = NULL;
+    char                        errbuf[FB_SSL_ERR_BUFSIZ];
     gboolean                    ok = TRUE;
 
     /* Initialize SSL context if necessary */
@@ -666,21 +710,22 @@ static gboolean fbExporterOpenTLS (
     /* wrap a stream BIO around the opened socket */
     if (!(conn = BIO_new_socket(exporter->stream.fd, 1))) {
         ok = FALSE;
+        ERR_error_string_n(ERR_get_error(), errbuf, sizeof(errbuf));
         g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_CONN,
                     "couldn't wrap socket to %s:%s for TLS: %s",
                     exporter->spec.conn->host, exporter->spec.conn->svc,
-                    ERR_error_string(ERR_get_error(), NULL));
-        while (ERR_get_error());
+                    errbuf);
+        ERR_clear_error();
         goto end;
     }
 
     /* create SSL socket */
     if (!(exporter->ssl = SSL_new((SSL_CTX *)exporter->spec.conn->vssl_ctx))) {
         ok = FALSE;
+        ERR_error_string_n(ERR_get_error(), errbuf, sizeof(errbuf));
         g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_CONN,
-                    "couldnt create TLS socket: %s",
-                    ERR_error_string(ERR_get_error(), NULL));
-        while (ERR_get_error());
+                    "couldnt create TLS socket: %s", errbuf);
+        ERR_clear_error();
         goto end;
     }
 
@@ -688,11 +733,12 @@ static gboolean fbExporterOpenTLS (
     SSL_set_bio(exporter->ssl, conn, conn);
     if (SSL_connect(exporter->ssl) <= 0) {
         ok = FALSE;
+        ERR_error_string_n(ERR_get_error(), errbuf, sizeof(errbuf));
         g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_CONN,
                     "couldn't connect TLS socket to %s:%s: %s",
                     exporter->spec.conn->host, exporter->spec.conn->svc,
-                    ERR_error_string(ERR_get_error(), NULL));
-        while (ERR_get_error());
+                    errbuf);
+        ERR_clear_error();
         goto end;
     }
 
@@ -722,13 +768,14 @@ end:
  * @return
  *
  */
-static gboolean fbExporterOpenDTLS (
+static gboolean fbExporterOpenDTLS(
     fbExporter_t                *exporter,
     GError                      **err)
 {
     BIO                         *conn = NULL;
     gboolean                    ok = TRUE;
     struct sockaddr             peer;
+    char                        errbuf[FB_SSL_ERR_BUFSIZ];
     size_t                      peerlen = sizeof(struct sockaddr);
 
     /* Initialize SSL context if necessary */
@@ -744,11 +791,12 @@ static gboolean fbExporterOpenDTLS (
     /* wrap a datagram BIO around the opened socket */
     if (!(conn = BIO_new_dgram(exporter->stream.fd, 1))) {
         ok = FALSE;
+        ERR_error_string_n(ERR_get_error(), errbuf, sizeof(errbuf));
         g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_CONN,
                     "couldn't wrap socket to %s:%s for DTLS: %s",
                     exporter->spec.conn->host, exporter->spec.conn->svc,
-                    ERR_error_string(ERR_get_error(), NULL));
-        while (ERR_get_error());
+                    errbuf);
+        ERR_clear_error();
         goto end;
     }
 
@@ -761,15 +809,19 @@ static gboolean fbExporterOpenDTLS (
                     strerror(errno));
         goto end;
     }
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
     BIO_ctrl_set_connected(conn, 1, &peer);
+#else
+    BIO_ctrl_set_connected(conn, &peer);
+#endif
 
     /* create SSL socket */
     if (!(exporter->ssl = SSL_new((SSL_CTX *)exporter->spec.conn->vssl_ctx))) {
         ok = FALSE;
+        ERR_error_string_n(ERR_get_error(), errbuf, sizeof(errbuf));
         g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_CONN,
-                    "couldnt create DTLS socket: %s",
-                    ERR_error_string(ERR_get_error(), NULL));
-        while (ERR_get_error());
+                    "couldnt create DTLS socket: %s", errbuf);
+        ERR_clear_error();
         goto end;
     }
 
@@ -805,21 +857,22 @@ end:
  *
  * @return
  */
-static gboolean fbExporterWriteTLS (
+static gboolean fbExporterWriteTLS(
     fbExporter_t                *exporter,
     uint8_t                     *msgbase,
     size_t                      msglen,
     GError                      **err)
 {
+    char                        errbuf[FB_SSL_ERR_BUFSIZ];
     int                         rc;
 
     while (msglen) {
         rc = SSL_write(exporter->ssl, msgbase, msglen);
         if (rc <= 0) {
+            ERR_error_string_n(ERR_get_error(), errbuf, sizeof(errbuf));
             g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_IO,
-                        "I/O error: %s",
-                        ERR_error_string(ERR_get_error(), NULL));
-            while (ERR_get_error());
+                        "I/O error: %s", errbuf);
+            ERR_clear_error();
             return FALSE;
         }
 
@@ -838,7 +891,7 @@ static gboolean fbExporterWriteTLS (
  * @param exporter
  *
  */
-static void fbExporterCloseTLS (
+static void fbExporterCloseTLS(
     fbExporter_t                *exporter)
 {
     SSL_shutdown(exporter->ssl);
@@ -958,7 +1011,7 @@ fbExporter_t    *fbExporterAllocNet(
  */
 
 static void * fbExporterSpreadReceiver(
-    void *arg )
+    void *arg)
 {
     int             i = 0;
     char            grp[MAX_GROUP_NAME];
@@ -1150,10 +1203,10 @@ static gboolean fbExporterSpreadOpen(
  * @param err
  */
 static gboolean fbExporterSpreadWrite(
-    fbExporter_t *exporter,
-    uint8_t *msgbase,
-    size_t msglen,
-    GError **err )
+    fbExporter_t  *exporter,
+    uint8_t       *msgbase,
+    size_t         msglen,
+    GError       **err)
 {
     int ret = 0;
     fbSpreadSpec_t *spread;
@@ -1201,7 +1254,7 @@ static gboolean fbExporterSpreadWrite(
  */
 
 static void fbExporterSpreadClose(
-    fbExporter_t *exporter )
+    fbExporter_t *exporter)
 {
     if (exporter->active) {
         pthread_cancel(exporter->spec.spread->recv_thread);
@@ -1217,7 +1270,7 @@ static void fbExporterSpreadClose(
  * @param Spread_params
  */
 fbExporter_t *fbExporterAllocSpread(
-    fbSpreadParams_t *params )
+    fbSpreadParams_t *params)
 {
     fbExporter_t    *exporter = NULL;
 
@@ -1226,7 +1279,6 @@ fbExporter_t *fbExporterAllocSpread(
     g_assert(params->groups[0]);
 
     exporter = g_slice_new0(fbExporter_t);
-    memset(exporter, 0, sizeof(fbExporter_t));
 
     exporter->spec.spread = fbConnSpreadCopy(params);
 
@@ -1442,4 +1494,40 @@ size_t fbExporterGetMsgLen(
     fbExporter_t   *exporter)
 {
     return exporter->msg_len;
+}
+
+/**
+ *fbExporterAddSourceIP
+ *
+ *
+ *
+ * @param exporter
+ * @param source_ip_v4
+ */
+void fbExporterAddSourceIP(
+    fbExporter_t   *exporter,
+    const char     *source_ip_v4)
+{
+    if ((source_ip_v4) && (source_ip_v4[0] != '\0')) {
+        snprintf(exporter->source_ip, V4_MAX_SOURCE_ENTRY_LENGTH, "%s",
+                 source_ip_v4);
+    }
+}
+
+/**
+ *fbExporterAddSourceIP6
+ *
+ *
+ *
+ * @param exporter
+ * @param source_ip_v6
+ */
+void fbExporterAddSourceIP6(
+    fbExporter_t   *exporter,
+    const char     *source_ip_v6)
+{
+    if ((source_ip_v6) && (source_ip_v6[0] != '\0')) {
+        snprintf(exporter->source_ip6, V6_MAX_SOURCE_ENTRY_LENGTH, "%s",
+                 source_ip_v6);
+    }
 }

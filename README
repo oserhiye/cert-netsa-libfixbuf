@@ -38,7 +38,7 @@ For any element that does not exist in libfixbuf's default Information Model
 (above ID 346), libfixbuf will convert this Information Element to
 "ciscoNetflowGeneric" (ID 9999) in the template.  The only exceptions are the
 "NF_F_FW_EXT_EVENT" and "NF_F_FW_EVENT", often exported from Cisco's ASA Device
-(http://www.cisco.com/en/US/docs/security/asa/asa82/netflow/netflow.html), which
+(https://www.cisco.com/en/US/docs/security/asa/asa82/netflow/netflow.html), which
 will be converted to separate elements 9997 and 9998 respectively.  Similarly,
 the Cisco ASA will often export elements 40001, 40002, 40003, and 40004.
 These elements are substituted with the IPFIX elements 225, 226, 227, and 228
@@ -67,8 +67,15 @@ well as detailed documentation on the public API calls and data types.
 
 libfixbuf API documentation is available in doc/html.
 
+Two command line tools to view the contents of an IPFIX file are available
+from the separate fixbuf-tools package
+(https://tools.netsa.cert.org/fixbuf-tools/): ipfix2json produces JSON and
+ipfixDump produces human-readable text.  (ipfixDump was distributed as part of
+libfixbuf in the libfixbuf-2.3.x and libfixbuf-2.4.x releases and previously
+as part of YAF.)
+
 A Python API to libfixbuf is available in the pyfixbuf package, distributed
-separately (http://tools.netsa.cert.org/pyfixbuf/).
+separately (https://tools.netsa.cert.org/pyfixbuf/).
 
 Building
 --------
@@ -79,7 +86,7 @@ The customary build procedure (./configure && make
 
 libfixbuf requires glib-2.0 version 2.18 or later.  glib is available
 on most modern Linux distributions and BSD ports collections, or in
-source form from http://www.gtk.org.
+source form from https://www.gtk.org/.
 
 libfixbuf automatically uses the getaddrinfo(3) facility and the
 accompanying dual IPv4/IPv6 stack support if present. getaddrinfo(3)
@@ -112,3 +119,33 @@ The following are known issues with libfixbuf as of version 1.0.0:
    or periodic template expiration as required when transporting IPFIX
    over UDP. Applications using libfixbuf to transport IPFIX messages
    over UDP must maintain these timeouts and manually manage the session.
+
+Copyright
+---------
+
+@DISTRIBUTION_STATEMENT_BEGIN@
+libfixbuf 2.5
+
+Copyright 2024 Carnegie Mellon University.
+
+NO WARRANTY. THIS CARNEGIE MELLON UNIVERSITY AND SOFTWARE ENGINEERING
+INSTITUTE MATERIAL IS FURNISHED ON AN "AS-IS" BASIS. CARNEGIE MELLON
+UNIVERSITY MAKES NO WARRANTIES OF ANY KIND, EITHER EXPRESSED OR
+IMPLIED, AS TO ANY MATTER INCLUDING, BUT NOT LIMITED TO, WARRANTY OF
+FITNESS FOR PURPOSE OR MERCHANTABILITY, EXCLUSIVITY, OR RESULTS
+OBTAINED FROM USE OF THE MATERIAL. CARNEGIE MELLON UNIVERSITY DOES NOT
+MAKE ANY WARRANTY OF ANY KIND WITH RESPECT TO FREEDOM FROM PATENT,
+TRADEMARK, OR COPYRIGHT INFRINGEMENT.
+
+Licensed under a GNU-Lesser GPL 3.0-style license, please see
+LICENSE.txt or contact permission@sei.cmu.edu for full terms.
+
+[DISTRIBUTION STATEMENT A] This material has been approved for public
+release and unlimited distribution.  Please see Copyright notice for
+non-US Government use and distribution.
+
+This Software includes and/or makes use of Third-Party Software each
+subject to its own license.
+
+DM24-1020
+@DISTRIBUTION_STATEMENT_END@

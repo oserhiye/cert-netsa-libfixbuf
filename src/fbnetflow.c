@@ -1,44 +1,45 @@
+/*
+ *  Copyright 2008-2024 Carnegie Mellon University
+ *  See license information in LICENSE.txt.
+ */
 /**
- *@internal
+ *  @file fbnetflow.c
+ *  Translates NetFlow v9 to IPFIX
  *
- * @file fbnetflow.c
+ *  This implements a Netflow convertor for translating into IPFIX
+ *  within the fixbuf structure
+ */
+/*
+ *  ------------------------------------------------------------------------
+ *  Authors: Chris Inacio, Emily Sarneso
+ *  ------------------------------------------------------------------------
+ *  @DISTRIBUTION_STATEMENT_BEGIN@
+ *  libfixbuf 2.5
  *
- * This implements a Netflow convertor for translating into IPFIX
- * within the fixbuf structure
+ *  Copyright 2024 Carnegie Mellon University.
  *
- * ------------------------------------------------------------------------
- * Copyright (C) 2008-2018 Carnegie Mellon University. All Rights Reserved.
- * ------------------------------------------------------------------------
- * Authors: Chris Inacio <inacio@cert.org>, Emily Sarneso <ecoff@cert.org>
- * ------------------------------------------------------------------------
- * @OPENSOURCE_LICENSE_START@
- * libfixbuf 2.0
+ *  NO WARRANTY. THIS CARNEGIE MELLON UNIVERSITY AND SOFTWARE ENGINEERING
+ *  INSTITUTE MATERIAL IS FURNISHED ON AN "AS-IS" BASIS. CARNEGIE MELLON
+ *  UNIVERSITY MAKES NO WARRANTIES OF ANY KIND, EITHER EXPRESSED OR
+ *  IMPLIED, AS TO ANY MATTER INCLUDING, BUT NOT LIMITED TO, WARRANTY OF
+ *  FITNESS FOR PURPOSE OR MERCHANTABILITY, EXCLUSIVITY, OR RESULTS
+ *  OBTAINED FROM USE OF THE MATERIAL. CARNEGIE MELLON UNIVERSITY DOES NOT
+ *  MAKE ANY WARRANTY OF ANY KIND WITH RESPECT TO FREEDOM FROM PATENT,
+ *  TRADEMARK, OR COPYRIGHT INFRINGEMENT.
  *
- * Copyright 2018 Carnegie Mellon University. All Rights Reserved.
+ *  Licensed under a GNU-Lesser GPL 3.0-style license, please see
+ *  LICENSE.txt or contact permission@sei.cmu.edu for full terms.
  *
- * NO WARRANTY. THIS CARNEGIE MELLON UNIVERSITY AND SOFTWARE
- * ENGINEERING INSTITUTE MATERIAL IS FURNISHED ON AN "AS-IS"
- * BASIS. CARNEGIE MELLON UNIVERSITY MAKES NO WARRANTIES OF ANY KIND,
- * EITHER EXPRESSED OR IMPLIED, AS TO ANY MATTER INCLUDING, BUT NOT
- * LIMITED TO, WARRANTY OF FITNESS FOR PURPOSE OR MERCHANTABILITY,
- * EXCLUSIVITY, OR RESULTS OBTAINED FROM USE OF THE
- * MATERIAL. CARNEGIE MELLON UNIVERSITY DOES NOT MAKE ANY WARRANTY OF
- * ANY KIND WITH RESPECT TO FREEDOM FROM PATENT, TRADEMARK, OR
- * COPYRIGHT INFRINGEMENT.
+ *  [DISTRIBUTION STATEMENT A] This material has been approved for public
+ *  release and unlimited distribution.  Please see Copyright notice for
+ *  non-US Government use and distribution.
  *
- * Released under a GNU-Lesser GPL 3.0-style license, please see
- * LICENSE.txt or contact permission@sei.cmu.edu for full terms.
+ *  This Software includes and/or makes use of Third-Party Software each
+ *  subject to its own license.
  *
- * [DISTRIBUTION STATEMENT A] This material has been approved for
- * public release and unlimited distribution.  Please see Copyright
- * notice for non-US Government use and distribution.
- *
- * Carnegie Mellon(R) and CERT(R) are registered in the U.S. Patent
- * and Trademark Office by Carnegie Mellon University.
- *
- * DM18-0325
- * @OPENSOURCE_LICENSE_END@
- * ------------------------------------------------------------------------
+ *  DM24-1020
+ *  @DISTRIBUTION_STATEMENT_END@
+ *  ------------------------------------------------------------------------
  */
 
 #define _FIXBUF_SOURCE_
@@ -267,7 +268,7 @@ struct fbCollectorNetflowV9State_st {
  * @param datum pointer to the structure to be destroyed
  *
  */
-static void         templateHashDestroyHelper (
+static void         templateHashDestroyHelper(
     gpointer datum)
 {
     g_slice_free(fbCollectorNetflowV9TemplateHash_t, datum);
@@ -280,26 +281,6 @@ static void         domainHashDestroyHelper(
         g_hash_table_destroy(((fbCollectorNetflowV9Session_t *)datum)->templateHash);
     }
     g_slice_free(fbCollectorNetflowV9Session_t, datum);
-}
-
-static guint        fooHash (
-    gconstpointer   key)
-{
-    return (guint)((uintptr_t)key);
-}
-
-static gboolean     fooEqual (
-    gconstpointer   alpha,
-    gconstpointer   beta)
-{
-    uintptr_t   alphaInt = (uintptr_t)alpha;
-    uintptr_t   betaInt = (uintptr_t)beta;
-
-    if (alphaInt == betaInt) {
-        return TRUE;
-    }
-
-    return FALSE;
 }
 
 
@@ -499,7 +480,7 @@ static gboolean     fbCollectorDecodeV9MsgVL(
  *
  * @return TRUE on success, FALSE on error
  */
-static gboolean    fbCollectorMessageHeaderV9 (
+static gboolean    fbCollectorMessageHeaderV9(
     fbCollector_t               *collector,
     uint8_t                     *buffer,
     size_t                      b_len,
@@ -570,7 +551,7 @@ static gboolean    fbCollectorMessageHeaderV9 (
  * @return Number of Templates Parsed
  *
  */
-static int netflowDataTemplateParse (
+static int netflowDataTemplateParse(
     fbCollector_t   *collector,
     uint8_t         *dataBuf,
     uint16_t        *recordLength,
@@ -585,7 +566,6 @@ static int netflowDataTemplateParse (
     uint16_t        recLength = g_ntohs(*recordLength);
     uint16_t        lengthParsed = 4; /* to account for set header */
     uint8_t         *fieldCountPtr;
-    uintptr_t       bigTemplateId;
     unsigned int    loop;
     uint16_t        temp;
     int             tmplcount = 0;
@@ -593,7 +573,6 @@ static int netflowDataTemplateParse (
     uint8_t         addReversePenFix = 0;
 #endif
     gboolean        addSysUpTime = FALSE;
-    gpointer        hashResult = NULL;
     struct fbCollectorNetflowV9State_st     *transState =
         (struct fbCollectorNetflowV9State_st *)collector->translatorState;
     struct fbCollectorNetflowV9TemplateHash_st *newTemplate = NULL;
@@ -790,7 +769,7 @@ static int netflowDataTemplateParse (
            that is there if this template number already exists */
         if (currentSession->templateHash == NULL) {
             currentSession->templateHash =
-                g_hash_table_new_full(fooHash, fooEqual,
+                g_hash_table_new_full(g_direct_hash, NULL,
                                       NULL, templateHashDestroyHelper);
 
             if (NULL == currentSession->templateHash) {
@@ -801,17 +780,8 @@ static int netflowDataTemplateParse (
             }
         }
 
-        bigTemplateId = (uintptr_t)templateId;
-        hashResult = g_hash_table_lookup(currentSession->templateHash,
-                                         (gconstpointer)bigTemplateId);
-        if (NULL != hashResult) {
-            g_hash_table_replace(currentSession->templateHash,
-                                 (gpointer)bigTemplateId, newTemplate);
-        } else {
-            g_hash_table_insert(currentSession->templateHash,
-                                (gpointer)bigTemplateId, newTemplate);
-        }
-
+        g_hash_table_insert(currentSession->templateHash,
+                            GUINT_TO_POINTER(templateId), newTemplate);
         tmplcount++;
 
 #if FB_NETFLOW_DEBUG == 1
@@ -848,7 +818,7 @@ static int netflowDataTemplateParse (
  * @return number of templates parsed
  *
  */
-static int netflowOptionsTemplateParse (
+static int netflowOptionsTemplateParse(
     fbCollector_t   *collector,
     uint8_t         *dataBuf,
     uint16_t        *recordLength,
@@ -861,11 +831,9 @@ static int netflowOptionsTemplateParse (
     uint16_t        lengthParsed = 4; /* for set header */
     uint16_t        optScopeLen, optLen, type, fieldLen;
     uint16_t        templateLength = 0;
-    uintptr_t       bigTemplateId;
     uint16_t        recLength = g_ntohs(*recordLength);
     unsigned int    loop;
     unsigned int    fieldCount;
-    gpointer        hashResult = NULL;
     int             tmplcount = 0;
     struct fbCollectorNetflowV9State_st     *transState =
         (struct fbCollectorNetflowV9State_st *)collector->translatorState;
@@ -981,7 +949,7 @@ static int netflowOptionsTemplateParse (
         if (currentSession->templateHash == NULL) {
 
             currentSession->templateHash =
-                g_hash_table_new_full(fooHash, fooEqual,
+                g_hash_table_new_full(g_direct_hash, NULL,
                                       NULL, templateHashDestroyHelper);
 
             if (NULL == currentSession->templateHash) {
@@ -992,26 +960,15 @@ static int netflowOptionsTemplateParse (
             }
         }
 
-        /* put the template into the hash, check/replace the template
-           that is there if this template number already exists */
-
-        bigTemplateId = (uintptr_t)templateId;
-        hashResult = g_hash_table_lookup(currentSession->templateHash,
-                                         (gconstpointer)bigTemplateId);
-        if (NULL != hashResult) {
-            g_hash_table_replace(currentSession->templateHash,
-                                 (gpointer)bigTemplateId, newTemplate);
-        } else {
-            g_hash_table_insert(currentSession->templateHash,
-                                (gpointer)bigTemplateId, newTemplate);
-        }
+        g_hash_table_insert(currentSession->templateHash,
+                            GUINT_TO_POINTER(templateId), newTemplate);
 
 #if FB_NETFLOW_DEBUG == 1
-    fprintf(stderr, "Options template inserted into hash: templateId %d,"
+        fprintf(stderr, "Options template inserted into hash: templateId %d,"
                 " templateSize: %d, Domain: %04x, SysUpTime %d, "
-            "fieldCount: %u \n",
-            templateId, templateLength, transState->observation_id,
-            newTemplate->addSysUpTime, fieldCount);
+                "fieldCount: %u \n",
+                templateId, templateLength, transState->observation_id,
+                newTemplate->addSysUpTime, fieldCount);
 #endif
 
         templateLength = 0; /* reset to 0 after each tmpl */
@@ -1292,7 +1249,7 @@ static gboolean     fbCollectorPostProcV9(
                 if ((dataBuf + *bufLen) <= (msgOsetPtr - 4 + recordLength)) {
                     /* return if this is the last FlowSet in the packet */
                     g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_NETFLOWV9,
-                                "No Template 0x%02x Present for this Session."
+                                "No Template %#06x Present for this Session."
                                 " %u Flows Lost.", setId,
                                 (recordCount-recordCounter));
                     currentSession->netflowSeqNum++;
@@ -1305,7 +1262,7 @@ static gboolean     fbCollectorPostProcV9(
 #endif
 
                 g_log(G_LOG_DOMAIN, G_LOG_LEVEL_WARNING,
-                      "No Template 0x%02x Present for Session", setId);
+                      "No Template %#06x Present for Session", setId);
 
                 msgOsetPtr -= 4;
                 memmove((msgOsetPtr), (msgOsetPtr + recordLength),
@@ -1321,7 +1278,7 @@ static gboolean     fbCollectorPostProcV9(
 
 #if FB_NETFLOW_DEBUG == 1
                 fprintf(stderr,
-                        "number of data records in set %02x is %d (0x%x)\n",
+                        "number of data records in set %#06x is %d (%#x)\n",
                         setId, numberRecordsInSet, numberRecordsInSet);
 #endif
                 if (numberRecordsInSet == 0) {
@@ -1448,9 +1405,7 @@ static void         fbCollectorTransCloseV9(
 
     pthread_mutex_destroy(&transState->ts_lock);
 
-    if (NULL != collector->translatorState) {
-        g_free(collector->translatorState);
-    }
+    g_free(collector->translatorState);
 
     collector->translatorState = NULL;
     return;
@@ -1469,7 +1424,6 @@ static void fbCollectorTimeOutSessionV9(
     fbCollector_t *collector,
     fbSession_t   *session)
 {
-
     struct fbCollectorNetflowV9State_st     *transState =
         (struct fbCollectorNetflowV9State_st *)collector->translatorState;
     fbCollectorNetflowV9Session_t           *nfsession = NULL;
@@ -1531,8 +1485,7 @@ gboolean    fbCollectorSetNetflowV9Translator(
     }
 
 
-    hashTable = g_hash_table_new_full(g_direct_hash,
-                                      g_direct_equal, NULL,
+    hashTable = g_hash_table_new_full(g_direct_hash, NULL, NULL,
                                       domainHashDestroyHelper);
 
     if (NULL == hashTable) {

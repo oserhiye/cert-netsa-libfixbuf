@@ -1,42 +1,48 @@
+/*
+ *  Copyright 2006-2024 Carnegie Mellon University
+ *  See license information in LICENSE.txt.
+ */
 /**
- *@internal
+ *  @file private.h
+ *  fixbuf IPFIX protocol library private interface.
  *
- ** private.h
- ** fixbuf IPFIX Implementation Private Interface
- **
- ** ------------------------------------------------------------------------
- ** Copyright (C) 2006-2018 Carnegie Mellon University. All Rights Reserved.
- ** ------------------------------------------------------------------------
- ** Authors: Brian Trammell
- ** ------------------------------------------------------------------------
- ** @OPENSOURCE_LICENSE_START@
- ** libfixbuf 2.0
- **
- ** Copyright 2018 Carnegie Mellon University. All Rights Reserved.
- **
- ** NO WARRANTY. THIS CARNEGIE MELLON UNIVERSITY AND SOFTWARE
- ** ENGINEERING INSTITUTE MATERIAL IS FURNISHED ON AN "AS-IS"
- ** BASIS. CARNEGIE MELLON UNIVERSITY MAKES NO WARRANTIES OF ANY KIND,
- ** EITHER EXPRESSED OR IMPLIED, AS TO ANY MATTER INCLUDING, BUT NOT
- ** LIMITED TO, WARRANTY OF FITNESS FOR PURPOSE OR MERCHANTABILITY,
- ** EXCLUSIVITY, OR RESULTS OBTAINED FROM USE OF THE
- ** MATERIAL. CARNEGIE MELLON UNIVERSITY DOES NOT MAKE ANY WARRANTY OF
- ** ANY KIND WITH RESPECT TO FREEDOM FROM PATENT, TRADEMARK, OR
- ** COPYRIGHT INFRINGEMENT.
- **
- ** Released under a GNU-Lesser GPL 3.0-style license, please see
- ** LICENSE.txt or contact permission@sei.cmu.edu for full terms.
- **
- ** [DISTRIBUTION STATEMENT A] This material has been approved for
- ** public release and unlimited distribution.  Please see Copyright
- ** notice for non-US Government use and distribution.
- **
- ** Carnegie Mellon(R) and CERT(R) are registered in the U.S. Patent
- ** and Trademark Office by Carnegie Mellon University.
- **
- ** DM18-0325
- ** @OPENSOURCE_LICENSE_END@
- ** ------------------------------------------------------------------------
+ *  These calls and structures are intended for the use of libfixbuf modules,
+ *  and as such are not documented or guaranteed to remain stable in any
+ *  way. Applications using these calls and structures may have to be modified
+ *  to track changes to this interface across minor version releases of
+ *  fixbuf.
+ */
+/*
+ *  ------------------------------------------------------------------------
+ *  Authors: Brian Trammell
+ *  ------------------------------------------------------------------------
+ *  @DISTRIBUTION_STATEMENT_BEGIN@
+ *  libfixbuf 2.5
+ *
+ *  Copyright 2024 Carnegie Mellon University.
+ *
+ *  NO WARRANTY. THIS CARNEGIE MELLON UNIVERSITY AND SOFTWARE ENGINEERING
+ *  INSTITUTE MATERIAL IS FURNISHED ON AN "AS-IS" BASIS. CARNEGIE MELLON
+ *  UNIVERSITY MAKES NO WARRANTIES OF ANY KIND, EITHER EXPRESSED OR
+ *  IMPLIED, AS TO ANY MATTER INCLUDING, BUT NOT LIMITED TO, WARRANTY OF
+ *  FITNESS FOR PURPOSE OR MERCHANTABILITY, EXCLUSIVITY, OR RESULTS
+ *  OBTAINED FROM USE OF THE MATERIAL. CARNEGIE MELLON UNIVERSITY DOES NOT
+ *  MAKE ANY WARRANTY OF ANY KIND WITH RESPECT TO FREEDOM FROM PATENT,
+ *  TRADEMARK, OR COPYRIGHT INFRINGEMENT.
+ *
+ *  Licensed under a GNU-Lesser GPL 3.0-style license, please see
+ *  LICENSE.txt or contact permission@sei.cmu.edu for full terms.
+ *
+ *  [DISTRIBUTION STATEMENT A] This material has been approved for public
+ *  release and unlimited distribution.  Please see Copyright notice for
+ *  non-US Government use and distribution.
+ *
+ *  This Software includes and/or makes use of Third-Party Software each
+ *  subject to its own license.
+ *
+ *  DM24-1020
+ *  @DISTRIBUTION_STATEMENT_END@
+ *  ------------------------------------------------------------------------
  */
 
 #ifndef _FB_PRIVATE_H_
@@ -66,6 +72,9 @@
 /** definition of the max-size of an fbuf_t buffer, or the
     default/only size */
 #define FB_MSGLEN_MAX       65535
+
+/** size of the buffer for OpenSSL error messages */
+#define FB_SSL_ERR_BUFSIZ   512
 
 #if HAVE_SPREAD
 
@@ -166,10 +175,11 @@ typedef struct fbUDPConnSpec_st {
 #ifdef DEFINE_TEMPLATE_METADATA_SPEC
 /* Template metadata template */
 static fbInfoElementSpec_t template_metadata_spec[] = {
+    {(char *)"templateId",                     2, 0 },
+    {(char *)"paddingOctets",                  6, 1 },
+    {(char *)"templateName",                   FB_IE_VARLEN, 0 },
+    {(char *)"templateDescription",            FB_IE_VARLEN, 0 },
     /* {"templateInformationElementList",         FB_IE_VARLEN, 0 }, */
-    {"templateName",                           FB_IE_VARLEN, 0 },
-    {"templateDescription",                    FB_IE_VARLEN, 0 },
-    {"templateId",                             2, 0 },
     FB_IESPEC_NULL
 };
 #endif
@@ -179,14 +189,15 @@ static fbInfoElementSpec_t template_metadata_spec[] = {
  *
  */
 typedef struct fbTemplateOptRec_st {
-    /** List of PEN, IE num pairs */
-    /* fbSubTemplateList_t info_element_list; */
+    /** Template ID */
+    uint16_t       template_id;
+    uint8_t        template_padding[6];
     /** Template name */
     fbVarfield_t   template_name;
     /** Template description (optional) */
     fbVarfield_t   template_description;
-    /** Template ID */
-    uint16_t       template_id;
+    /** List of PEN, IE num pairs */
+    /* fbSubTemplateList_t info_element_list; */
 } fbTemplateOptRec_t;
 
 /**
@@ -381,12 +392,14 @@ const fbInfoElement_t     *fbInfoModelGetElement(
  * @param model
  * @param ex_ie
  * @param tmpl_ie
+ * @param err
  *
  */
 gboolean            fbInfoElementCopyToTemplate(
     fbInfoModel_t       *model,
     fbInfoElement_t     *ex_ie,
-    fbInfoElement_t     *tmpl_ie);
+    fbInfoElement_t     *tmpl_ie,
+    GError             **err);
 
 /**
  * fbInfoElementCopyToTemplateByName
@@ -395,6 +408,7 @@ gboolean            fbInfoElementCopyToTemplate(
  * @param name
  * @param len_override
  * @param tmpl_ie
+ * @param err
  *
  *
  */
@@ -402,7 +416,8 @@ gboolean            fbInfoElementCopyToTemplateByName(
     fbInfoModel_t       *model,
     const char          *name,
     uint16_t            len_override,
-    fbInfoElement_t     *tmpl_ie);
+    fbInfoElement_t     *tmpl_ie,
+    GError             **err);
 
 /**
  * fbInfoModelAddAlienElement
@@ -415,6 +430,19 @@ gboolean            fbInfoElementCopyToTemplateByName(
 const fbInfoElement_t     *fbInfoModelAddAlienElement(
     fbInfoModel_t       *model,
     fbInfoElement_t     *ex_ie);
+
+/**
+ * fbInfoElementAllocTypeTemplate2
+ *
+ * @param model
+ * @param internal
+ * @param err
+ * @return tmpl
+ */
+fbTemplate_t        *fbInfoElementAllocTypeTemplate2(
+    fbInfoModel_t       *model,
+    gboolean            internal,
+    GError              **err);
 
 /**
  * fbTemplateRetain
@@ -458,6 +486,40 @@ void                fbTemplateDebug(
     const char          *label,
     uint16_t            tid,
     fbTemplate_t        *tmpl);
+
+/**
+ * Allocates a new Template to describe a record that holds Template Metadata.
+ * This is, the template_metadata_spec.
+ *
+ * When `internal` is TRUE the padding is included; otherwise it is not.
+ *
+ * @param model
+ * @param internal
+ * @param err
+ * @returns The new template or NULL.
+ */
+fbTemplate_t        *fbTemplateAllocTemplateMetadataTmpl(
+    fbInfoModel_t      *model,
+    gboolean            internal,
+    GError            **err);
+
+/**
+ * Sets the metadata_rec member of `tmpl` to a newly allocated
+ * fbTemplateOptRec_t, and sets its template ID, name, and description to the
+ * given parameters.
+ *
+ * Frees any metadata_rec that already existed on the template.
+ *
+ * @param tmpl
+ * @param tid
+ * @param name          Should not be NULL
+ * @param description   May be NULL
+ */
+void                fbTemplateAddMetadataRecord(
+    fbTemplate_t        *tmpl,
+    uint16_t             tid,
+    const char          *name,
+    const char          *description);
 
 /**
  * Returns the callback function for a given session
@@ -538,7 +600,7 @@ void fbSessionSetCollector(
 void fbSessionSetGroupParams(
     fbSession_t     *session,
     sp_groupname_t  *groups,
-    int              num_groups);
+    unsigned int     num_groups);
 
 /**
  * fbSessionSetPrivateGroup
@@ -777,6 +839,7 @@ void fbCollectorRemoveListenerLastBuf(
  * @param fd
  * @param peer
  * @param peerlen
+ * @param err
  *
  */
 fbCollector_t       *fbCollectorAllocSocket(
@@ -784,7 +847,8 @@ fbCollector_t       *fbCollectorAllocSocket(
     void                *ctx,
     int                 fd,
     struct sockaddr     *peer,
-    size_t              peerlen);
+    size_t              peerlen,
+    GError              **err);
 
 /**
  * fbCollectorAllocTLS

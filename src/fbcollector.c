@@ -1,45 +1,44 @@
-/** @internal
- **
- **
- ** @file fbcollector.c
- ** IPFIX Collecting Process single transport session implementation
- **
- ** ------------------------------------------------------------------------
- ** Copyright (C) 2006-2018 Carnegie Mellon University. All Rights Reserved.
- ** ------------------------------------------------------------------------
- ** Authors: Brian Trammell
- ** ------------------------------------------------------------------------
- ** @OPENSOURCE_LICENSE_START@
- ** libfixbuf 2.0
- **
- ** Copyright 2018 Carnegie Mellon University. All Rights Reserved.
- **
- ** NO WARRANTY. THIS CARNEGIE MELLON UNIVERSITY AND SOFTWARE
- ** ENGINEERING INSTITUTE MATERIAL IS FURNISHED ON AN "AS-IS"
- ** BASIS. CARNEGIE MELLON UNIVERSITY MAKES NO WARRANTIES OF ANY KIND,
- ** EITHER EXPRESSED OR IMPLIED, AS TO ANY MATTER INCLUDING, BUT NOT
- ** LIMITED TO, WARRANTY OF FITNESS FOR PURPOSE OR MERCHANTABILITY,
- ** EXCLUSIVITY, OR RESULTS OBTAINED FROM USE OF THE
- ** MATERIAL. CARNEGIE MELLON UNIVERSITY DOES NOT MAKE ANY WARRANTY OF
- ** ANY KIND WITH RESPECT TO FREEDOM FROM PATENT, TRADEMARK, OR
- ** COPYRIGHT INFRINGEMENT.
- **
- ** Released under a GNU-Lesser GPL 3.0-style license, please see
- ** LICENSE.txt or contact permission@sei.cmu.edu for full terms.
- **
- ** [DISTRIBUTION STATEMENT A] This material has been approved for
- ** public release and unlimited distribution.  Please see Copyright
- ** notice for non-US Government use and distribution.
- **
- ** Carnegie Mellon(R) and CERT(R) are registered in the U.S. Patent
- ** and Trademark Office by Carnegie Mellon University.
- **
- ** DM18-0325
- ** @OPENSOURCE_LICENSE_END@
- ** ------------------------------------------------------------------------
+/*
+ *  Copyright 2006-2024 Carnegie Mellon University
+ *  See license information in LICENSE.txt.
+ */
+/**
+ *  @file fbcollector.c
+ *  IPFIX Collecting Process single transport session implementation
+ */
+/*
+ *  ------------------------------------------------------------------------
+ *  Authors: Brian Trammell
+ *  ------------------------------------------------------------------------
+ *  @DISTRIBUTION_STATEMENT_BEGIN@
+ *  libfixbuf 2.5
+ *
+ *  Copyright 2024 Carnegie Mellon University.
+ *
+ *  NO WARRANTY. THIS CARNEGIE MELLON UNIVERSITY AND SOFTWARE ENGINEERING
+ *  INSTITUTE MATERIAL IS FURNISHED ON AN "AS-IS" BASIS. CARNEGIE MELLON
+ *  UNIVERSITY MAKES NO WARRANTIES OF ANY KIND, EITHER EXPRESSED OR
+ *  IMPLIED, AS TO ANY MATTER INCLUDING, BUT NOT LIMITED TO, WARRANTY OF
+ *  FITNESS FOR PURPOSE OR MERCHANTABILITY, EXCLUSIVITY, OR RESULTS
+ *  OBTAINED FROM USE OF THE MATERIAL. CARNEGIE MELLON UNIVERSITY DOES NOT
+ *  MAKE ANY WARRANTY OF ANY KIND WITH RESPECT TO FREEDOM FROM PATENT,
+ *  TRADEMARK, OR COPYRIGHT INFRINGEMENT.
+ *
+ *  Licensed under a GNU-Lesser GPL 3.0-style license, please see
+ *  LICENSE.txt or contact permission@sei.cmu.edu for full terms.
+ *
+ *  [DISTRIBUTION STATEMENT A] This material has been approved for public
+ *  release and unlimited distribution.  Please see Copyright notice for
+ *  non-US Government use and distribution.
+ *
+ *  This Software includes and/or makes use of Third-Party Software each
+ *  subject to its own license.
+ *
+ *  DM24-1020
+ *  @DISTRIBUTION_STATEMENT_END@
+ *  ------------------------------------------------------------------------
  */
 
-/*#define _GNU_SOURCE*/
 #define _FIXBUF_SOURCE_
 #include <fixbuf/private.h>
 
@@ -193,7 +192,7 @@ gboolean fbCollectMessageBuffer(
  * @return TRUE (this always works)
  *
  */
-static gboolean    fbCollectorMessageHeaderNull (
+static gboolean    fbCollectorMessageHeaderNull(
     fbCollector_t               *collector __attribute__((unused)),
     uint8_t                     *buffer __attribute__((unused)),
     size_t                      b_len,
@@ -221,7 +220,7 @@ static gboolean    fbCollectorMessageHeaderNull (
  * @return TRUE (this always works)
  *
  */
-static gboolean    fbCollectorUDPMessageHeader (
+static gboolean    fbCollectorUDPMessageHeader(
     fbCollector_t               *collector,
     uint8_t                     *buffer,
     size_t                      b_len,
@@ -332,44 +331,46 @@ static gboolean fbCollectorReadFile(
 {
     int                     rc;
     uint16_t                h_len;
-    gboolean                goodLen;
 
     /* Read and decode version and length */
     g_assert(*msglen > 4);
 
     rc = fread(msgbase, 1, 4, collector->stream.fp);
-    if (rc > 0) {
-        goodLen = collector->coreadLen(collector,(fbCollectorMsgVL_t *)msgbase,
-                                       *msglen, &h_len, err);
-        if (FALSE == goodLen) return FALSE;
-        msgbase += 4;
-    } else if (feof(collector->stream.fp)) {
-        g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_EOF,
-                    "End of file");
-        return FALSE;
-    } else {
-        g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_IO,
-                    "I/O error: %s", strerror(errno));
+    if (rc < 4) {
+        goto ERROR;
+    }
+    if (!collector->coreadLen(collector, (fbCollectorMsgVL_t *)msgbase,
+                              *msglen, &h_len, err))
+    {
         return FALSE;
     }
+    msgbase += 4;
 
     /* read rest of message */
     rc = fread(msgbase, 1, h_len - 4, collector->stream.fp);
-    if (rc > 0) {
-        *msglen = rc + 4;
-        if (!collector->copostRead(collector, msgbase, msglen, err)) {
-            return FALSE;
-        }
-        return TRUE;
-    } else if (feof(collector->stream.fp)) {
+    if (rc <= 0) {
+        goto ERROR;
+    }
+
+    *msglen = rc + 4;
+    if (!collector->copostRead(collector, msgbase, msglen, err)) {
+        return FALSE;
+    }
+    return TRUE;
+
+  ERROR:
+    if (feof(collector->stream.fp)) {
         g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_EOF,
                     "End of file");
-        return FALSE;
+    } else if (rc > 0) {
+        g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_EOF,
+                    "Too few bytes available for IPFIX Message Header (%d/16)",
+                    rc);
     } else {
         g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_IO,
                     "I/O error: %s", strerror(errno));
-        return FALSE;
     }
+    return FALSE;
 }
 
 /**
@@ -398,6 +399,8 @@ fbCollector_t *fbCollectorAllocFP(
     FILE            *fp)
 {
     fbCollector_t   *collector = NULL;
+
+    g_assert(fp);
 
     /* Create a new collector */
     collector = g_slice_new0(fbCollector_t);
@@ -678,7 +681,6 @@ static void fbCollectorSetUDPSpec(
     fbCollector_t         *collector,
     fbUDPConnSpec_t       *spec)
 {
-
     if (collector->udp_head == NULL) {
         collector->udp_head = spec;
         collector->udp_tail = spec;
@@ -954,7 +956,8 @@ fbCollector_t *fbCollectorAllocSocket(
     void            *ctx,
     int             fd,
     struct sockaddr *peer,
-    size_t          peerlen)
+    size_t          peerlen,
+    GError          **err)
 {
     fbCollector_t  *collector   = NULL;
     fbConnSpec_t   *spec        = fbListenerGetConnSpec(listener);
@@ -980,6 +983,9 @@ fbCollector_t *fbCollectorAllocSocket(
 
     /* Create interrupt pipe */
     if (pipe(pfd)) {
+        g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_CONN,
+                    "Unable to create pipe on collector: %s", strerror(errno));
+        g_slice_free(fbCollector_t, collector);
         return NULL;
     }
     collector->rip = pfd[0];
@@ -1029,6 +1035,7 @@ static gboolean fbCollectorReadTLS(
 {
     int                     rc;
     uint16_t                h_len, rrem;
+    char                    errbuf[FB_SSL_ERR_BUFSIZ];
     gboolean                rv;
 
     /* Read and decode version and length */
@@ -1046,10 +1053,10 @@ static gboolean fbCollectorReadTLS(
                         "TLS connection shutdown");
             return FALSE;
         } else {
+            ERR_error_string_n(ERR_get_error(), errbuf, sizeof(errbuf));
             g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_IO,
-                        "TLS I/O error at message start: %s",
-                        ERR_error_string(ERR_get_error(), NULL));
-            while (ERR_get_error());
+                        "TLS I/O error at message start: %s", errbuf);
+            ERR_clear_error();
             return FALSE;
         }
     }
@@ -1066,10 +1073,10 @@ static gboolean fbCollectorReadTLS(
             rrem -= rc;
             msgbase += rc;
         } else {
+            ERR_error_string_n(ERR_get_error(), errbuf, sizeof(errbuf));
             g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_IO,
-                        "TLS I/O error in message: %s",
-                        ERR_error_string(ERR_get_error(), NULL));
-            while (ERR_get_error());
+                        "TLS I/O error in message: %s", errbuf);
+            ERR_clear_error();
             return FALSE;
         }
     }
@@ -1090,14 +1097,12 @@ static void fbCollectorCloseTLS(
 {
     SSL_shutdown(collector->ssl);
     SSL_free(collector->ssl);
-    if (collector->rip != -1)
-    {
+    if (collector->rip != -1) {
         close(collector->rip);
         collector->rip = -1;
     }
 
-    if (collector->wip != -1)
-    {
+    if (collector->wip != -1) {
         close(collector->wip);
         collector->wip = -1;
     }
@@ -1117,6 +1122,7 @@ static gboolean fbCollectorOpenTLS(
 {
     fbConnSpec_t    *spec = fbListenerGetConnSpec(collector->listener);
     BIO             *conn;
+    char            errbuf[FB_SSL_ERR_BUFSIZ];
     gboolean        ok = TRUE;
 
     /* Initialize SSL context if necessary */
@@ -1129,20 +1135,20 @@ static gboolean fbCollectorOpenTLS(
     /* wrap a stream BIO around the opened socket */
     if (!(conn = BIO_new_socket(collector->stream.fd, 1))) {
         ok = FALSE;
+        ERR_error_string_n(ERR_get_error(), errbuf, sizeof(errbuf));
         g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_CONN,
-                    "couldn't wrap socket for TLS: %s",
-                    ERR_error_string(ERR_get_error(), NULL));
-        while (ERR_get_error());
+                    "couldn't wrap socket for TLS: %s", errbuf);
+        ERR_clear_error();
         goto end;
     }
 
     /* create SSL socket */
     if (!(collector->ssl = SSL_new((SSL_CTX *)spec->vssl_ctx))) {
         ok = FALSE;
+        ERR_error_string_n(ERR_get_error(), errbuf, sizeof(errbuf));
         g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_CONN,
-                    "couldnt create TLS socket: %s",
-                    ERR_error_string(ERR_get_error(), NULL));
-        while (ERR_get_error());
+                    "couldnt create TLS socket: %s", errbuf);
+        ERR_clear_error();
         goto end;
     }
 
@@ -1152,10 +1158,10 @@ static gboolean fbCollectorOpenTLS(
     SSL_set_mode(collector->ssl, SSL_MODE_AUTO_RETRY);
     if (SSL_accept(collector->ssl) <= 0) {
         ok = FALSE;
+        ERR_error_string_n(ERR_get_error(), errbuf, sizeof(errbuf));
         g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_CONN,
-                    "couldn't accept on connected TLS socket: %s",
-                    ERR_error_string(ERR_get_error(), NULL));
-        while (ERR_get_error());
+                    "couldn't accept on connected TLS socket: %s", errbuf);
+        ERR_clear_error();
         goto end;
     }
 
@@ -1188,6 +1194,7 @@ static gboolean fbCollectorOpenDTLS(
 {
     fbConnSpec_t    *spec = fbListenerGetConnSpec(collector->listener);
     BIO             *conn;
+    char            errbuf[FB_SSL_ERR_BUFSIZ];
     gboolean        ok = TRUE;
 
     /* Initialize SSL context if necessary */
@@ -1200,20 +1207,20 @@ static gboolean fbCollectorOpenDTLS(
     /* wrap a stream BIO around the opened socket */
     if (!(conn = BIO_new_dgram(collector->stream.fd, 1))) {
         ok = FALSE;
+        ERR_error_string_n(ERR_get_error(), errbuf, sizeof(errbuf));
         g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_CONN,
-                    "couldn't wrap socket for TLS: %s",
-                    ERR_error_string(ERR_get_error(), NULL));
-        while (ERR_get_error());
+                    "couldn't wrap socket for TLS: %s", errbuf);
+        ERR_clear_error();
         goto end;
     }
 
     /* create SSL socket */
     if (!(collector->ssl = SSL_new((SSL_CTX *)spec->vssl_ctx))) {
         ok = FALSE;
+        ERR_error_string_n(ERR_get_error(), errbuf, sizeof(errbuf));
         g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_CONN,
-                    "couldnt create TLS socket: %s",
-                    ERR_error_string(ERR_get_error(), NULL));
-        while (ERR_get_error());
+                    "couldnt create TLS socket: %s", errbuf);
+        ERR_clear_error();
         goto end;
     }
 
@@ -1226,10 +1233,10 @@ static gboolean fbCollectorOpenDTLS(
     SSL_set_mode(collector->ssl, SSL_MODE_AUTO_RETRY);
     if (SSL_accept(collector->ssl) <= 0) {
         ok = FALSE;
+        ERR_error_string_n(ERR_get_error(), errbuf, sizeof(errbuf));
         g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_CONN,
-                    "couldn't accept on connected TLS socket: %s",
-                    ERR_error_string(ERR_get_error(), NULL));
-        while (ERR_get_error());
+                    "couldn't accept on connected TLS socket: %s", errbuf);
+        ERR_clear_error();
         goto end;
     }
 
@@ -1324,8 +1331,8 @@ fbCollector_t *fbCollectorAllocTLS(
 #if HAVE_SPREAD
 
 static gboolean fbCollectorSpreadOpen(
-    fbCollector_t *collector,
-    GError **err )
+    fbCollector_t  *collector,
+    GError        **err)
 {
     int ret;
     int i = 0;
@@ -1430,7 +1437,6 @@ static gboolean fbCollectorSpreadPostProc(
     size_t        *b_len,
     GError        **err)
 {
-
     if (fbCollectorTestGroupMembership(collector, 0)) {
         return TRUE;
     }
@@ -1444,7 +1450,7 @@ static gboolean fbCollectorSpreadPostProc(
 
 int fbCollectorGetSpreadReturnGroups(
     fbCollector_t *collector,
-    char *groups[] )
+    char *groups[])
 {
     int loop = 0;
     fbSpreadSpec_t *spread = collector->stream.spread;
@@ -1457,10 +1463,10 @@ int fbCollectorGetSpreadReturnGroups(
 }
 
 static gboolean fbCollectorSpreadRead(
-    fbCollector_t *collector,
-    uint8_t *msgbase,
-    size_t *msglen,
-    GError **err )
+    fbCollector_t  *collector,
+    uint8_t        *msgbase,
+    size_t         *msglen,
+    GError        **err)
 {
     fbSpreadSpec_t *spread = collector->stream.spread;
 
@@ -1523,7 +1529,7 @@ static gboolean fbCollectorSpreadRead(
 
 
 static void fbCollectorSpreadClose(
-    fbCollector_t *collector )
+    fbCollector_t *collector)
 {
     if (collector->active) {
         SP_disconnect( collector->stream.spread->recv_mbox );
@@ -1532,12 +1538,11 @@ static void fbCollectorSpreadClose(
 }
 
 fbCollector_t *fbCollectorAllocSpread(
-    void *ctx,
-    fbSpreadParams_t *params,
-    GError **err )
+    void              *ctx,
+    fbSpreadParams_t  *params,
+    GError           **err)
 {
-    fbCollector_t *collector = g_slice_new( fbCollector_t );
-    memset( collector, 0, sizeof( fbCollector_t ) );
+    fbCollector_t *collector = g_slice_new0( fbCollector_t );
 
     collector->ctx = ctx;
     collector->stream.spread = fbConnSpreadCopy( params );
@@ -1608,7 +1613,11 @@ gboolean        fbCollectMessage(
     GError          **err)
 {
     /* Ensure stream is open */
-    if (!collector->active) return FALSE;
+    if (!collector->active) {
+        g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_CONN,
+                    "Collector not active");
+        return FALSE;
+    }
 
     /* Attempt to read message */
     if (collector->coread(collector, msgbase, msglen, err)) return TRUE;
@@ -1685,7 +1694,6 @@ void             fbCollectorSetFD(
 void            fbCollectorClose(
     fbCollector_t   *collector)
 {
-
     if (collector->active && collector->coclose) collector->coclose(collector);
 
     if (collector->listener) {
@@ -1844,6 +1852,7 @@ void fbCollectorSetAcceptOnly(
     struct sockaddr *address,
     size_t           address_length)
 {
+    g_assert(address);
     collector->accept_only = TRUE;
 
     memcpy(&(collector->peer.so), address,

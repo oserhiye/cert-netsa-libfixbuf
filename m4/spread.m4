@@ -1,3 +1,4 @@
+##  spread.m4                   -*- mode: autoconf -*-
 
 # tests for Spread EMS headers and libraries
 #
@@ -57,17 +58,13 @@ AC_DEFUN([PT_TRY_LINK],[
         [te_library_found=true]
         [])
 
-    AC_TRY_RUN([
+    AC_RUN_IFELSE([AC_LANG_PROGRAM([dnl
        #include <stdio.h>
        #include <stdlib.h>
        #include <sp.h>
-       int main()
-        {
-		membership_info memb_info;
-
-                return 0;
-        }
-        ],[AC_MSG_NOTICE([acceptable version of Spread found])],[
+       ],[dnl
+       membership_info memb_info;
+        ])],[AC_MSG_NOTICE([acceptable version of Spread found])],[
         te_library_found="false"
         AC_MSG_WARN([Old Version of Spread? Fixbuf Requires Version 4.1])
     ])
@@ -99,7 +96,7 @@ AC_DEFUN([AC_PATH_SPREAD],[
     te_pthread="yes"
 
     AC_ARG_WITH([spread],
-        AC_HELP_STRING([--with-spread=DIR],[location of Spread toolkit]),
+        AS_HELP_STRING([--with-spread=DIR],[location of Spread toolkit]),
             [   case $withval in
                     yes) te_install_path="yes" ;;
                     no) PT_SPREAD_REQUIRED([spread]) ;;
@@ -110,7 +107,7 @@ AC_DEFUN([AC_PATH_SPREAD],[
 
     if test "$te_install_path" = "no"; then
         AC_ARG_WITH([spread-include],
-            AC_HELP_STRING([--with-spread-include=DIR],[location of Spread headers]),
+            AS_HELP_STRING([--with-spread-include=DIR],[location of Spread headers]),
                 [   case $withval in
                         yes) ;;
                         no) PT_SPREAD_REQUIRED([spread-include]) ;;
@@ -119,7 +116,7 @@ AC_DEFUN([AC_PATH_SPREAD],[
                 [te_req_err="true"])
 
         AC_ARG_WITH([spread-lib],
-            AC_HELP_STRING([--with-spread-lib=DIR],[location of Spread libraries]),
+            AS_HELP_STRING([--with-spread-lib=DIR],[location of Spread libraries]),
                 [   case $withval in
                         yes) ;;
                         no) PT_SPREAD_REQUIRED([spread-lib]) ;;
@@ -196,10 +193,8 @@ AC_DEFUN([AC_PATH_SPREAD],[
                 if test "x$te_lib_path" != "x"; then
                     AC_MSG_NOTICE(using libspread found in $te_lib_path)
                     AC_SUBST([SPREAD_LDFLAGS],[-L$te_lib_path])
-    		    RPM_CONFIG_FLAGS="${RPM_CONFIG_FLAGS} --with-spread=${te_path}"
 		else
 		    AC_MSG_NOTICE(using libspread found in default library path)
-                    RPM_CONFIG_FLAGS="${RPM_CONFIG_FLAGS} --with-spread"
                 fi
                 if test "x$te_pthreadlib" != "x"; then
                     AC_SUBST([SPREAD_LIBS],["-l$te_lib_name -l$te_pthreadlib"])

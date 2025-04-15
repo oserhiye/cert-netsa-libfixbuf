@@ -1,40 +1,42 @@
 /*
- ** fbconnspec.c
- ** IPFIX Connection Specifier implementation
- **
- ** ------------------------------------------------------------------------
- ** Copyright (C) 2006-2018 Carnegie Mellon University. All Rights Reserved.
- ** ------------------------------------------------------------------------
- ** Authors: Brian Trammell
- ** ------------------------------------------------------------------------
- ** @OPENSOURCE_LICENSE_START@
- ** libfixbuf 2.0
- **
- ** Copyright 2018 Carnegie Mellon University. All Rights Reserved.
- **
- ** NO WARRANTY. THIS CARNEGIE MELLON UNIVERSITY AND SOFTWARE
- ** ENGINEERING INSTITUTE MATERIAL IS FURNISHED ON AN "AS-IS"
- ** BASIS. CARNEGIE MELLON UNIVERSITY MAKES NO WARRANTIES OF ANY KIND,
- ** EITHER EXPRESSED OR IMPLIED, AS TO ANY MATTER INCLUDING, BUT NOT
- ** LIMITED TO, WARRANTY OF FITNESS FOR PURPOSE OR MERCHANTABILITY,
- ** EXCLUSIVITY, OR RESULTS OBTAINED FROM USE OF THE
- ** MATERIAL. CARNEGIE MELLON UNIVERSITY DOES NOT MAKE ANY WARRANTY OF
- ** ANY KIND WITH RESPECT TO FREEDOM FROM PATENT, TRADEMARK, OR
- ** COPYRIGHT INFRINGEMENT.
- **
- ** Released under a GNU-Lesser GPL 3.0-style license, please see
- ** LICENSE.txt or contact permission@sei.cmu.edu for full terms.
- **
- ** [DISTRIBUTION STATEMENT A] This material has been approved for
- ** public release and unlimited distribution.  Please see Copyright
- ** notice for non-US Government use and distribution.
- **
- ** Carnegie Mellon(R) and CERT(R) are registered in the U.S. Patent
- ** and Trademark Office by Carnegie Mellon University.
- **
- ** DM18-0325
- ** @OPENSOURCE_LICENSE_END@
- ** ------------------------------------------------------------------------
+ *  Copyright 2006-2024 Carnegie Mellon University
+ *  See license information in LICENSE.txt.
+ */
+/**
+ *  @file fbconnspec.c
+ *  IPFIX Connection Specifier implementation
+ */
+/*
+ *  ------------------------------------------------------------------------
+ *  Authors: Brian Trammell
+ *  ------------------------------------------------------------------------
+ *  @DISTRIBUTION_STATEMENT_BEGIN@
+ *  libfixbuf 2.5
+ *
+ *  Copyright 2024 Carnegie Mellon University.
+ *
+ *  NO WARRANTY. THIS CARNEGIE MELLON UNIVERSITY AND SOFTWARE ENGINEERING
+ *  INSTITUTE MATERIAL IS FURNISHED ON AN "AS-IS" BASIS. CARNEGIE MELLON
+ *  UNIVERSITY MAKES NO WARRANTIES OF ANY KIND, EITHER EXPRESSED OR
+ *  IMPLIED, AS TO ANY MATTER INCLUDING, BUT NOT LIMITED TO, WARRANTY OF
+ *  FITNESS FOR PURPOSE OR MERCHANTABILITY, EXCLUSIVITY, OR RESULTS
+ *  OBTAINED FROM USE OF THE MATERIAL. CARNEGIE MELLON UNIVERSITY DOES NOT
+ *  MAKE ANY WARRANTY OF ANY KIND WITH RESPECT TO FREEDOM FROM PATENT,
+ *  TRADEMARK, OR COPYRIGHT INFRINGEMENT.
+ *
+ *  Licensed under a GNU-Lesser GPL 3.0-style license, please see
+ *  LICENSE.txt or contact permission@sei.cmu.edu for full terms.
+ *
+ *  [DISTRIBUTION STATEMENT A] This material has been approved for public
+ *  release and unlimited distribution.  Please see Copyright notice for
+ *  non-US Government use and distribution.
+ *
+ *  This Software includes and/or makes use of Third-Party Software each
+ *  subject to its own license.
+ *
+ *  DM24-1020
+ *  @DISTRIBUTION_STATEMENT_END@
+ *  ------------------------------------------------------------------------
  */
 
 #define _FIXBUF_SOURCE_
@@ -120,7 +122,7 @@ gboolean fbConnSpecLookupAI(
     }
 
     /* get addrinfo for host/port */
-    if ((ai_err = getaddrinfo(spec->host, spec->svc, &hints, &tempaddr) )) {
+    if ((ai_err = getaddrinfo(spec->host, spec->svc, &hints, &tempaddr))) {
         g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_CONN,
                     "error looking up address %s:%s: %s",
                     spec->host ? spec->host : "*", spec->svc,
@@ -220,7 +222,7 @@ gboolean fbConnSpecLookupAI(
         ai->ai_socktype = SOCK_SEQPACKET;
         ai->ai_protocol = 0;
         break;
-#endif
+#endif  /* FB_ENABLE_SCTP */
     case FB_TCP:
 #if HAVE_OPENSSL
     case FB_TLS_TCP:
@@ -278,8 +280,9 @@ gboolean fbConnSpecInitTLS(
     gboolean            passive,
     GError              **err)
 {
-    SSL_METHOD          *tlsmeth = NULL;
+    const SSL_METHOD    *tlsmeth = NULL;
     SSL_CTX             *ssl_ctx = NULL;
+    char                errbuf[FB_SSL_ERR_BUFSIZ];
     gboolean            ok = TRUE;
 
     /* Initialize the library and error strings */
@@ -299,15 +302,19 @@ gboolean fbConnSpecInitTLS(
         return TRUE;
 #if HAVE_OPENSSL_DTLS_SCTP
     case FB_DTLS_SCTP:
-        tlsmeth = passive ? DTLSv1_server_method() : DTLSv1_client_method();
+        tlsmeth = passive ? DTLS_server_method() : DTLS_client_method();
         break;
 #endif
     case FB_TLS_TCP:
-        tlsmeth = passive ? TLSv1_server_method() : TLSv1_client_method();
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
+        tlsmeth = passive ? SSLv23_server_method() : SSLv23_client_method();
+#else
+        tlsmeth = passive ? TLS_server_method() : TLS_client_method();
+#endif
         break;
 #if HAVE_OPENSSL_DTLS
     case FB_DTLS_UDP:
-        tlsmeth = passive ? DTLSv1_server_method() : DTLSv1_client_method();
+        tlsmeth = passive ? DTLS_server_method() : DTLS_client_method();
         break;
 #endif
     default:
@@ -331,10 +338,10 @@ gboolean fbConnSpecInitTLS(
     ssl_ctx = SSL_CTX_new(tlsmeth);
 
     if (!ssl_ctx) {
+        ERR_error_string_n(ERR_get_error(), errbuf, sizeof(errbuf));
         g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_CONN,
-                    "Cannot create SSL context: %s",
-                    ERR_error_string(ERR_get_error(), NULL));
-        while (ERR_get_error());
+                    "Cannot create SSL context: %s", errbuf);
+        ERR_clear_error();
         ok = FALSE;
         goto end;
     }
@@ -344,38 +351,37 @@ gboolean fbConnSpecInitTLS(
     SSL_CTX_set_default_passwd_cb_userdata(ssl_ctx, spec->ssl_key_pass);
 
     /* Load CA certificate */
-    if (SSL_CTX_load_verify_locations(ssl_ctx,
-                                      spec->ssl_ca_file, NULL) != 1) {
+    if (SSL_CTX_load_verify_locations(ssl_ctx, spec->ssl_ca_file, NULL) != 1) {
         ok = FALSE;
+        ERR_error_string_n(ERR_get_error(), errbuf, sizeof(errbuf));
         g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_CONN,
                     "Failed to load certificate authority file %s: %s",
-                    spec->ssl_ca_file, ERR_error_string(ERR_get_error(), NULL));
-        while (ERR_get_error());
+                    spec->ssl_ca_file, errbuf);
+        ERR_clear_error();
         goto end;
     }
 
     /* Load certificate */
-    if (SSL_CTX_use_certificate_chain_file(ssl_ctx,
-                                           spec->ssl_cert_file) != 1) {
+    if (SSL_CTX_use_certificate_chain_file(ssl_ctx, spec->ssl_cert_file) != 1) {
         ok = FALSE;
+        ERR_error_string_n(ERR_get_error(), errbuf, sizeof(errbuf));
         g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_CONN,
                     "Failed to load certificate file %s: %s",
-                    spec->ssl_cert_file,
-                    ERR_error_string(ERR_get_error(), NULL));
-        while (ERR_get_error());
+                    spec->ssl_cert_file, errbuf);
+        ERR_clear_error();
         goto end;
     }
 
     /* Load private key */
-    if (SSL_CTX_use_PrivateKey_file(ssl_ctx,
-                                    spec->ssl_key_file,
-                                    SSL_FILETYPE_PEM) != 1) {
+    if (SSL_CTX_use_PrivateKey_file(ssl_ctx, spec->ssl_key_file,
+                                    SSL_FILETYPE_PEM) != 1)
+    {
         ok = FALSE;
+        ERR_error_string_n(ERR_get_error(), errbuf, sizeof(errbuf));
         g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_CONN,
                     "Failed to load private key file %s: %s",
-                    spec->ssl_key_file,
-                    ERR_error_string(ERR_get_error(), NULL));
-        while (ERR_get_error());
+                    spec->ssl_key_file, errbuf);
+        ERR_clear_error();
         goto end;
     }
 
@@ -401,16 +407,12 @@ fbConnSpec_t *fbConnSpecCopy(
     fbConnSpec_t    *newspec = g_slice_new0(fbConnSpec_t);
 
     newspec->transport = spec->transport;
-    newspec->host = spec->host ? g_strdup(spec->host) : NULL;
-    newspec->svc = spec->svc ? g_strdup(spec->svc) : NULL;
-    newspec->ssl_ca_file = spec->ssl_ca_file ?
-                           g_strdup(spec->ssl_ca_file) : NULL;
-    newspec->ssl_cert_file = spec->ssl_cert_file ?
-                           g_strdup(spec->ssl_cert_file) : NULL;
-    newspec->ssl_key_file = spec->ssl_key_file ?
-                           g_strdup(spec->ssl_key_file) : NULL;
-    newspec->ssl_key_pass = spec->ssl_key_pass ?
-                           g_strdup(spec->ssl_key_pass) : NULL;
+    newspec->host = g_strdup(spec->host);
+    newspec->svc = g_strdup(spec->svc);
+    newspec->ssl_ca_file = g_strdup(spec->ssl_ca_file);
+    newspec->ssl_cert_file = g_strdup(spec->ssl_cert_file);
+    newspec->ssl_key_file = g_strdup(spec->ssl_key_file);
+    newspec->ssl_key_pass = g_strdup(spec->ssl_key_pass);
     newspec->vai = NULL;
     newspec->vssl_ctx = NULL;
 
@@ -423,12 +425,12 @@ void fbConnSpecFree(
     if (!spec) {
         return;
     }
-    if (spec->host) g_free(spec->host);
-    if (spec->svc) g_free(spec->svc);
-    if (spec->ssl_ca_file) g_free(spec->ssl_ca_file);
-    if (spec->ssl_cert_file) g_free(spec->ssl_cert_file);
-    if (spec->ssl_key_file) g_free(spec->ssl_key_file);
-    if (spec->ssl_key_pass) g_free(spec->ssl_key_pass);
+    g_free(spec->host);
+    g_free(spec->svc);
+    g_free(spec->ssl_ca_file);
+    g_free(spec->ssl_cert_file);
+    g_free(spec->ssl_key_file);
+    g_free(spec->ssl_key_pass);
     fbConnSpecFreeAI(spec);
 #if HAVE_OPENSSL
     if (spec->vssl_ctx) {
@@ -441,15 +443,14 @@ void fbConnSpecFree(
 #if HAVE_SPREAD
 
 fbSpreadSpec_t *fbConnSpreadCopy(
-    fbSpreadParams_t *params )
+    fbSpreadParams_t *params)
 {
     int n = 0;
     char **g = 0;
     fbSpreadSpec_t *spec = g_slice_new0( fbSpreadSpec_t );
-    memset( spec, 0, sizeof( fbSpreadSpec_t ) );
 
     spec->session = params->session;
-    spec->daemon  = params->daemon ? g_strdup( params->daemon ) : NULL;
+    spec->daemon  = g_strdup( params->daemon );
 
     for (g=params->groups; *g; ++g)
     {
@@ -479,24 +480,18 @@ fbSpreadSpec_t *fbConnSpreadCopy(
 }
 
 void fbConnSpreadFree(
-    fbSpreadSpec_t *spec )
+    fbSpreadSpec_t *spec)
 {
-    if (spec->daemon)
-        g_free(spec->daemon);
-    if (spec->groups)
-        g_free(spec->groups);
-    if (spec->recv_groups)
-        g_free(spec->recv_groups);
-    if (spec->recv_mess)
-        g_free(spec->recv_mess);
-    if (spec->groups_to_send)
-        g_free(spec->groups_to_send);
-
+    g_free(spec->daemon);
+    g_free(spec->groups);
+    g_free(spec->recv_groups);
+    g_free(spec->recv_mess);
+    g_free(spec->groups_to_send);
     g_slice_free(fbSpreadSpec_t, spec);
 }
 
 const char * fbConnSpreadError(
-    int err )
+    int err)
 {
     switch (err)
     {

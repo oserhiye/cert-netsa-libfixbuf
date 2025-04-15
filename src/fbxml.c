@@ -1,40 +1,42 @@
 /*
- ** fbxml.c
- ** IPFIX Information Model and IE storage management
- **
- ** ------------------------------------------------------------------------
- ** Copyright (C) 2018 Carnegie Mellon University. All Rights Reserved.
- ** ------------------------------------------------------------------------
- ** Authors: Michael Duggan
- ** ------------------------------------------------------------------------
- ** @OPENSOURCE_LICENSE_START@
- ** libfixbuf 2.0
- **
- ** Copyright 2018 Carnegie Mellon University. All Rights Reserved.
- **
- ** NO WARRANTY. THIS CARNEGIE MELLON UNIVERSITY AND SOFTWARE
- ** ENGINEERING INSTITUTE MATERIAL IS FURNISHED ON AN "AS-IS"
- ** BASIS. CARNEGIE MELLON UNIVERSITY MAKES NO WARRANTIES OF ANY KIND,
- ** EITHER EXPRESSED OR IMPLIED, AS TO ANY MATTER INCLUDING, BUT NOT
- ** LIMITED TO, WARRANTY OF FITNESS FOR PURPOSE OR MERCHANTABILITY,
- ** EXCLUSIVITY, OR RESULTS OBTAINED FROM USE OF THE
- ** MATERIAL. CARNEGIE MELLON UNIVERSITY DOES NOT MAKE ANY WARRANTY OF
- ** ANY KIND WITH RESPECT TO FREEDOM FROM PATENT, TRADEMARK, OR
- ** COPYRIGHT INFRINGEMENT.
- **
- ** Released under a GNU-Lesser GPL 3.0-style license, please see
- ** LICENSE.txt or contact permission@sei.cmu.edu for full terms.
- **
- ** [DISTRIBUTION STATEMENT A] This material has been approved for
- ** public release and unlimited distribution.  Please see Copyright
- ** notice for non-US Government use and distribution.
- **
- ** Carnegie Mellon(R) and CERT(R) are registered in the U.S. Patent
- ** and Trademark Office by Carnegie Mellon University.
- **
- ** DM18-0325
- ** @OPENSOURCE_LICENSE_END@
- ** ------------------------------------------------------------------------
+ *  Copyright 2018-2024 Carnegie Mellon University
+ *  See license information in LICENSE.txt.
+ */
+/**
+ *  @file fbxml.c
+ *  IPFIX Information Model and IE storage management
+ */
+/*
+ *  ------------------------------------------------------------------------
+ *  Authors: Michael Duggan
+ *  ------------------------------------------------------------------------
+ *  @DISTRIBUTION_STATEMENT_BEGIN@
+ *  libfixbuf 2.5
+ *
+ *  Copyright 2024 Carnegie Mellon University.
+ *
+ *  NO WARRANTY. THIS CARNEGIE MELLON UNIVERSITY AND SOFTWARE ENGINEERING
+ *  INSTITUTE MATERIAL IS FURNISHED ON AN "AS-IS" BASIS. CARNEGIE MELLON
+ *  UNIVERSITY MAKES NO WARRANTIES OF ANY KIND, EITHER EXPRESSED OR
+ *  IMPLIED, AS TO ANY MATTER INCLUDING, BUT NOT LIMITED TO, WARRANTY OF
+ *  FITNESS FOR PURPOSE OR MERCHANTABILITY, EXCLUSIVITY, OR RESULTS
+ *  OBTAINED FROM USE OF THE MATERIAL. CARNEGIE MELLON UNIVERSITY DOES NOT
+ *  MAKE ANY WARRANTY OF ANY KIND WITH RESPECT TO FREEDOM FROM PATENT,
+ *  TRADEMARK, OR COPYRIGHT INFRINGEMENT.
+ *
+ *  Licensed under a GNU-Lesser GPL 3.0-style license, please see
+ *  LICENSE.txt or contact permission@sei.cmu.edu for full terms.
+ *
+ *  [DISTRIBUTION STATEMENT A] This material has been approved for public
+ *  release and unlimited distribution.  Please see Copyright notice for
+ *  non-US Government use and distribution.
+ *
+ *  This Software includes and/or makes use of Third-Party Software each
+ *  subject to its own license.
+ *
+ *  DM24-1020
+ *  @DISTRIBUTION_STATEMENT_END@
+ *  ------------------------------------------------------------------------
  */
 #include <fixbuf/public.h>
 
@@ -670,9 +672,7 @@ static void parse_element_end(
     }
 
     if (strcmp(element_name, "name") == 0) {
-        if (data->ie.ref.name) {
-            g_free((void *)data->ie.ref.name);
-        }
+        g_free((void *)data->ie.ref.name);
         data->ie.ref.name = g_strstrip(g_string_free(data->text, FALSE));
         data->text = g_string_sized_new(32);
         data->name_validity.validity = FOUND_VALID;
@@ -747,9 +747,7 @@ static void parse_element_end(
             }
         }
     } else if (strcmp(element_name, "group") == 0) {
-        if (data->group) {
-            g_free(data->group);
-        }
+        g_free(data->group);
         data->group = g_string_free(data->text, FALSE);
         data->text = g_string_sized_new(32);
         data->group_validity.validity = FOUND_VALID;
@@ -796,6 +794,7 @@ gboolean fbInfoModelReadXMLData(
     gssize          xml_data_len,
     GError        **error)
 {
+    g_assert(xml_data);
     if (ipfix_mappings_parse(xml_data, xml_data_len, error)) {
         return ipfix_elements_parse(model, xml_data, xml_data_len, error);
     }
@@ -809,6 +808,8 @@ gboolean fbInfoModelReadXMLFile(
 {
     gchar *buffer;
     gsize len;
+
+    g_assert(filename);
     if (g_file_get_contents(filename, &buffer, &len, error)) {
         gboolean rv = fbInfoModelReadXMLData(model, buffer, len, error);
         g_free(buffer);

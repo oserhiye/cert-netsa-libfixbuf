@@ -1,44 +1,45 @@
+/*
+ *  Copyright 2014-2024 Carnegie Mellon University
+ *  See license information in LICENSE.txt.
+ */
 /**
- *@internal
+ *  @file fbsflow.c
+ *  Translates SFlow to IPFIX
  *
- * @file fbsflow.c
+ *  This implements a SFlow convertor for translating into IPFIX
+ *  within the fixbuf structure
+ */
+/*
+ *  ------------------------------------------------------------------------
+ *  Authors: Emily Sarneso
+ *  ------------------------------------------------------------------------
+ *  @DISTRIBUTION_STATEMENT_BEGIN@
+ *  libfixbuf 2.5
  *
- * This implements a SFlow convertor for translating into IPFIX
- * within the fixbuf structure
+ *  Copyright 2024 Carnegie Mellon University.
  *
- * ------------------------------------------------------------------------
- * Copyright (C) 2008-2018 Carnegie Mellon University. All Rights Reserved.
- * ------------------------------------------------------------------------
- * Authors: Emily Sarneso <ecoff@cert.org>
- * ------------------------------------------------------------------------
- * @OPENSOURCE_LICENSE_START@
- * libfixbuf 2.0
+ *  NO WARRANTY. THIS CARNEGIE MELLON UNIVERSITY AND SOFTWARE ENGINEERING
+ *  INSTITUTE MATERIAL IS FURNISHED ON AN "AS-IS" BASIS. CARNEGIE MELLON
+ *  UNIVERSITY MAKES NO WARRANTIES OF ANY KIND, EITHER EXPRESSED OR
+ *  IMPLIED, AS TO ANY MATTER INCLUDING, BUT NOT LIMITED TO, WARRANTY OF
+ *  FITNESS FOR PURPOSE OR MERCHANTABILITY, EXCLUSIVITY, OR RESULTS
+ *  OBTAINED FROM USE OF THE MATERIAL. CARNEGIE MELLON UNIVERSITY DOES NOT
+ *  MAKE ANY WARRANTY OF ANY KIND WITH RESPECT TO FREEDOM FROM PATENT,
+ *  TRADEMARK, OR COPYRIGHT INFRINGEMENT.
  *
- * Copyright 2018 Carnegie Mellon University. All Rights Reserved.
+ *  Licensed under a GNU-Lesser GPL 3.0-style license, please see
+ *  LICENSE.txt or contact permission@sei.cmu.edu for full terms.
  *
- * NO WARRANTY. THIS CARNEGIE MELLON UNIVERSITY AND SOFTWARE
- * ENGINEERING INSTITUTE MATERIAL IS FURNISHED ON AN "AS-IS"
- * BASIS. CARNEGIE MELLON UNIVERSITY MAKES NO WARRANTIES OF ANY KIND,
- * EITHER EXPRESSED OR IMPLIED, AS TO ANY MATTER INCLUDING, BUT NOT
- * LIMITED TO, WARRANTY OF FITNESS FOR PURPOSE OR MERCHANTABILITY,
- * EXCLUSIVITY, OR RESULTS OBTAINED FROM USE OF THE
- * MATERIAL. CARNEGIE MELLON UNIVERSITY DOES NOT MAKE ANY WARRANTY OF
- * ANY KIND WITH RESPECT TO FREEDOM FROM PATENT, TRADEMARK, OR
- * COPYRIGHT INFRINGEMENT.
+ *  [DISTRIBUTION STATEMENT A] This material has been approved for public
+ *  release and unlimited distribution.  Please see Copyright notice for
+ *  non-US Government use and distribution.
  *
- * Released under a GNU-Lesser GPL 3.0-style license, please see
- * LICENSE.txt or contact permission@sei.cmu.edu for full terms.
+ *  This Software includes and/or makes use of Third-Party Software each
+ *  subject to its own license.
  *
- * [DISTRIBUTION STATEMENT A] This material has been approved for
- * public release and unlimited distribution.  Please see Copyright
- * notice for non-US Government use and distribution.
- *
- * Carnegie Mellon(R) and CERT(R) are registered in the U.S. Patent
- * and Trademark Office by Carnegie Mellon University.
- *
- * DM18-0325
- * @OPENSOURCE_LICENSE_END@
- * ------------------------------------------------------------------------
+ *  DM24-1020
+ *  @DISTRIBUTION_STATEMENT_END@
+ *  ------------------------------------------------------------------------
  */
 
 #define _FIXBUF_SOURCE_
@@ -231,41 +232,41 @@
 
 
 static fbInfoElementSpec_t sflow_spec[] = {
-    { "sourceIPv6Address",              16, 0 },
-    { "destinationIPv6Address",         16, 0 },
-    { "ipNextHopIPv6Address",           16, 0 },
-    { "bgpNextHopIPv6Address",          16, 0 },
-    { "collectorIPv6Address",           16, 0 },
-    { "collectionTimeMilliseconds",     8, 0 },
-    { "systemInitTimeMilliseconds",     8, 0 },
-    { "collectorIPv4Address",           4, 0 },
-    { "protocolIdentifier",             1, 0 },
-    { "ipClassOfService",               1, 0 },
-    { "sourceIPv4PrefixLength",         1, 0 },
-    { "destinationIPv4PrefixLength",    1, 0 },
-    { "sourceIPv4Address",              4, 0 },
-    { "destinationIPv4Address",         4, 0 },
-    { "octetTotalCount",                4, 0 },
-    { "packetTotalCount",               4, 0 },
-    { "ingressInterface",               4, 0 },
-    { "egressInterface",                4, 0 },
-    { "sourceMacAddress",               6, 0 },
-    { "destinationMacAddress",          6, 0 },
-    { "ipNextHopIPv4Address",           4, 0 },
-    { "bgpSourceAsNumber",              4, 0 },
-    { "bgpDestinationAsNumber",         4, 0 },
-    { "bgpNextHopIPv4Address",          4, 0 },
-    { "samplingPacketInterval",         4, 0 },
-    { "samplingPopulation",             4, 0 },
-    { "droppedPacketTotalCount",        4, 0 },
-    { "selectorId",                     4, 0 },
-    { "vlanId",                         2, 0 },
-    { "sourceTransportPort",            2, 0 },
-    { "destinationTransportPort",       2, 0 },
-    { "tcpControlBits",                 2, 0 },
-    { "dot1qVlanId",                    2, 0 },
-    { "postDot1qVlanId",                2, 0 },
-    { "dot1qPriority",                  1, 0 },
+    { (char *)"sourceIPv6Address",              16, 0 },
+    { (char *)"destinationIPv6Address",         16, 0 },
+    { (char *)"ipNextHopIPv6Address",           16, 0 },
+    { (char *)"bgpNextHopIPv6Address",          16, 0 },
+    { (char *)"collectorIPv6Address",           16, 0 },
+    { (char *)"collectionTimeMilliseconds",     8, 0 },
+    { (char *)"systemInitTimeMilliseconds",     8, 0 },
+    { (char *)"collectorIPv4Address",           4, 0 },
+    { (char *)"protocolIdentifier",             1, 0 },
+    { (char *)"ipClassOfService",               1, 0 },
+    { (char *)"sourceIPv4PrefixLength",         1, 0 },
+    { (char *)"destinationIPv4PrefixLength",    1, 0 },
+    { (char *)"sourceIPv4Address",              4, 0 },
+    { (char *)"destinationIPv4Address",         4, 0 },
+    { (char *)"octetTotalCount",                4, 0 },
+    { (char *)"packetTotalCount",               4, 0 },
+    { (char *)"ingressInterface",               4, 0 },
+    { (char *)"egressInterface",                4, 0 },
+    { (char *)"sourceMacAddress",               6, 0 },
+    { (char *)"destinationMacAddress",          6, 0 },
+    { (char *)"ipNextHopIPv4Address",           4, 0 },
+    { (char *)"bgpSourceAsNumber",              4, 0 },
+    { (char *)"bgpDestinationAsNumber",         4, 0 },
+    { (char *)"bgpNextHopIPv4Address",          4, 0 },
+    { (char *)"samplingPacketInterval",         4, 0 },
+    { (char *)"samplingPopulation",             4, 0 },
+    { (char *)"droppedPacketTotalCount",        4, 0 },
+    { (char *)"selectorId",                     4, 0 },
+    { (char *)"vlanId",                         2, 0 },
+    { (char *)"sourceTransportPort",            2, 0 },
+    { (char *)"destinationTransportPort",       2, 0 },
+    { (char *)"tcpControlBits",                 2, 0 },
+    { (char *)"dot1qVlanId",                    2, 0 },
+    { (char *)"postDot1qVlanId",                2, 0 },
+    { (char *)"dot1qPriority",                  1, 0 },
     FB_IESPEC_NULL
 };
 
@@ -322,23 +323,23 @@ typedef struct fbSFlowRecord_st{
 } fbSFlowRecord_t;
 
 static fbInfoElementSpec_t sflow_ctr_spec[] = {
-    { "collectorIPv6Address",             16, 0 },
-    { "collectionTimeMilliseconds",       8, 0 },
-    { "systemInitTimeMilliseconds",       8, 0 },
-    { "collectorIPv4Address",             4, 0 },
-    { "ingressInterface",                 4, 0 },
-    { "octetTotalCount",                  8, 0 },
-    { "ingressInterfaceType",             4, 0 },
-    { "packetTotalCount",                 4, 0 },
-    { "ingressMulticastPacketTotalCount", 4, 0 },
-    { "ingressBroadcastPacketTotalCount", 4, 0 },
-    { "notSentPacketTotalCount",          4, 0 },
-    { "droppedPacketTotalCount",          4, 0 },
-    { "postOctetTotalCount",              8, 0 },
-    { "ignoredPacketTotalCount",          4, 0 },
-    { "postPacketTotalCount",             4, 0 },
-    { "egressBroadcastPacketTotalCount",  4, 0 },
-    { "selectorId",                       4, 0 },
+    { (char *)"collectorIPv6Address",             16, 0 },
+    { (char *)"collectionTimeMilliseconds",       8, 0 },
+    { (char *)"systemInitTimeMilliseconds",       8, 0 },
+    { (char *)"collectorIPv4Address",             4, 0 },
+    { (char *)"ingressInterface",                 4, 0 },
+    { (char *)"octetTotalCount",                  8, 0 },
+    { (char *)"ingressInterfaceType",             4, 0 },
+    { (char *)"packetTotalCount",                 4, 0 },
+    { (char *)"ingressMulticastPacketTotalCount", 4, 0 },
+    { (char *)"ingressBroadcastPacketTotalCount", 4, 0 },
+    { (char *)"notSentPacketTotalCount",          4, 0 },
+    { (char *)"droppedPacketTotalCount",          4, 0 },
+    { (char *)"postOctetTotalCount",              8, 0 },
+    { (char *)"ignoredPacketTotalCount",          4, 0 },
+    { (char *)"postPacketTotalCount",             4, 0 },
+    { (char *)"egressBroadcastPacketTotalCount",  4, 0 },
+    { (char *)"selectorId",                       4, 0 },
     FB_IESPEC_NULL
 };
 
@@ -717,7 +718,8 @@ static gboolean sflowDecodeRawHeader(
         READU16INC(data, sflowrec->tcpControlBits);
         sflowrec->tcpControlBits = sflowrec->tcpControlBits & 0x0FFF;
 #if FB_SFLOW_DEBUG
-        fprintf(stderr, "TCP sp %d, dp %d, flags %02x\n", sflowrec->sourceTransportPort,
+        fprintf(stderr, "TCP sp %d, dp %d, flags %02x\n",
+                sflowrec->sourceTransportPort,
                 sflowrec->destinationTransportPort, sflowrec->tcpControlBits);
 #endif
     } else if (sflowrec->protocolIdentifier == 17) {
@@ -869,7 +871,7 @@ static gboolean     fbCollectorDecodeSFlowMsgVL(
  *
  * @return TRUE on success, FALSE on error
  */
-static gboolean    fbCollectorMessageHeaderSFlow (
+static gboolean    fbCollectorMessageHeaderSFlow(
     fbCollector_t               *collector,
     uint8_t                     *buffer,
     size_t                      b_len,
@@ -941,7 +943,7 @@ static gboolean    fbCollectorMessageHeaderSFlow (
  * @return Number of Templates Parsed
  *
  */
-static int sflowFlowSampleParse (
+static int sflowFlowSampleParse(
     fbCollector_t   *collector,
     uint8_t         **data,
     size_t          *datalen,
@@ -998,7 +1000,8 @@ static int sflowFlowSampleParse (
     READU32INC(dataBuf, numrecs);
 
 #if FB_SFLOW_DEBUG == 1
-    fprintf(stderr, "Internal %u, Egress %u, Expanded %d, numrecs %u, datalen %zu\n",
+    fprintf(stderr,
+            "Internal %u, Egress %u, Expanded %d, numrecs %u, datalen %zu\n",
             sflowrec->ingressInterface, sflowrec->egressInterface,
             expanded, numrecs, *datalen);
 #endif
@@ -1046,9 +1049,12 @@ static int sflowFlowSampleParse (
             /* after framelen is removed payload and length of header */
             /* raw packet header */
 
-            if (!sflowDecodeRawHeader(sflowrec, dataBuf+16, flowlength-16, protocol, err)) {
+            if (!sflowDecodeRawHeader(sflowrec, dataBuf+16, flowlength-16,
+                                      protocol, err))
+            {
 #if FB_SFLOW_DEBUG
-                fprintf(stderr, "RAW HEADER DECODE Error: %s\n", (*err)->message);
+                fprintf(stderr, "RAW HEADER DECODE Error: %s\n",
+                        (err ? (*err)->message : ""));
 #endif
                 g_clear_error(err);
             }
@@ -1057,7 +1063,7 @@ static int sflowFlowSampleParse (
           case 2:
           case 3:
           case 4:
-            sflowDecodeFlowHeaders(sflowrec, dataBuf, flowlength, format, err);
+            sflowDecodeFlowHeaders(sflowrec, dataBuf, flowlength, format, NULL);
             break;
           case 1001:
             READU32(dataBuf, var32);
@@ -1138,7 +1144,7 @@ static int sflowFlowSampleParse (
     return numrecs;
 }
 
-static int sflowCounterSampleParse (
+static int sflowCounterSampleParse(
     fbCollector_t          *collector,
     uint8_t                **data,
     size_t                 *datalen,
@@ -1311,7 +1317,6 @@ static gboolean     fbCollectorPostProcSFlow(
     }
 
     sfexp = sflowAllocExporter(transState->ipfixBuffer, transState->fbuf, err);
-
     if (!sfexp) {
         pthread_mutex_unlock(&transState->ts_lock);
         return FALSE;
@@ -1367,6 +1372,7 @@ static gboolean     fbCollectorPostProcSFlow(
 
         /*fBufSetAutomaticMode(transState->fbuf, FALSE);*/
         fBufEmit(transState->fbuf, err);
+        g_clear_error(err);
         msglen = fbExporterGetMsgLen(sfexp);
 
 #if FB_SFLOW_DEBUG == 1
@@ -1431,7 +1437,7 @@ static gboolean     fbCollectorPostProcSFlow(
     READU32INC(msgOsetPtr, numSamples);
     msgParsed -= 16;
 
-    while (sampleCount < numSamples ) {
+    while (sampleCount < numSamples) {
         if (msgParsed < 8) {
             g_set_error(err, FB_ERROR_DOMAIN, FB_ERROR_SFLOW,
                         "Buffer too small for Sample Header");
@@ -1577,6 +1583,7 @@ static gboolean     fbCollectorPostProcSFlow(
     currentSession->sflowSeqNum++;
 
     fBufEmit(transState->fbuf, err);
+    g_clear_error(err);
 
     msglen = fbExporterGetMsgLen(sfexp);
 
@@ -1651,7 +1658,6 @@ static void fbCollectorTimeOutSessionSFlow(
     fbCollector_t *collector,
     fbSession_t   *session)
 {
-
     struct fbCollectorSFlowState_st     *transState =
         (struct fbCollectorSFlowState_st *)collector->translatorState;
     fbCollectorSFlowSession_t           *sfsession = NULL;
@@ -1704,7 +1710,7 @@ gboolean    fbCollectorSetSFlowTranslator(
     GError                      **err)
 {
     struct fbCollectorSFlowState_st *sflowState =
-        g_slice_alloc0(sizeof(struct fbCollectorSFlowState_st));
+        g_slice_new0(struct fbCollectorSFlowState_st);
     GHashTable    *hashTable = NULL;
     fbInfoModel_t *model = fbInfoModelAlloc();
     fbTemplate_t  *sftmpl = NULL;
