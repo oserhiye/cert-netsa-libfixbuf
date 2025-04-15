@@ -1,0 +1,22 @@
+Example export tool which uses Fixbuf IPFIX protocol library
+ It uses command line parameters:
+  @param filename - file with template and data to export
+  @param host - ip address of a collector
+  @param port - port number collector uses (usually 4739)
+
+As of now it exports only by using UDP connection
+
+exTool.c
+- source code for the tool
+
+build.sh
+hw_build.sh
+- hack scripts to build library and tool bypassing configure and automake
+  for proof-of-concept only, don't expect them to work, tested only on ubuntu
+
+testFile.txt
+- file with template and data to export
+  exists as a demo and example of syntax
+  tool can export it, which is tested
+
+Enjoy

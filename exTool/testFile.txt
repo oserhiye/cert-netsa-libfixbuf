@@ -1,0 +1,16 @@
+11 104
+flowStartMilliseconds 8  n
+flowEndMilliseconds   8  n
+octetTotalCount       8  n
+packetTotalCount      8  n
+sourceIPv4Address     4  n
+destinationIPv4Address 4  n
+sourceTransportPort   2  n
+destinationTransportPort 2  n
+rfc3550JitterMilliseconds 4  n
+protocolIdentifier    1  n
+paddingOctets         3  s
+0 0 0
+1742636507000 1742636519454 64192 944 3232248610 3232238593 3532 8080 1 1 000
+1742636511000 1742636523245 44192 584 3232248611 3232238593 3832 8081 2 17 000
+0 0 0 0 0 0 0 0 0 0 0
